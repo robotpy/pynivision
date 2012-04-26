@@ -40,20 +40,7 @@ def _errcheck_ptr(result, func, args):
         raise ImaqError
     return args
 
-def STDFUNC(name, *params, library=_dll, errcheck=_errcheck):
-    prototype = _functype(C.c_int, *tuple(param[1] for param in params))
-    paramflags = []
-    for param in params:
-        if len(param) == 3:
-            paramflags.append((1, param[0], param[2]))
-        else:
-            paramflags.append((1, param[0]))
-    func = prototype((name, library), tuple(paramflags))
-    if errcheck is not None:
-        func.errcheck = errcheck
-    return func
-
-def STDPTRFUNC(name, restype, *params, library=_dll, errcheck=_errcheck_ptr):
+def RETFUNC(name, restype, *params, library=_dll, errcheck=None):
     prototype = _functype(restype, *tuple(param[1] for param in params))
     paramflags = []
     for param in params:
@@ -65,6 +52,12 @@ def STDPTRFUNC(name, restype, *params, library=_dll, errcheck=_errcheck_ptr):
     if errcheck is not None:
         func.errcheck = errcheck
     return func
+
+def STDFUNC(name, *params, library=_dll, errcheck=_errcheck):
+    return RETFUNC(name, C.c_int, *params, library=library, errcheck=errcheck)
+
+def STDPTRFUNC(name, restype, *params, library=_dll, errcheck=_errcheck_ptr):
+    return RETFUNC(name, restype, *params, library=library, errcheck=errcheck)
 
 #
 # Error Management functions
@@ -109,7 +102,7 @@ def imaqDispose(object):
 #
 # Enumerated Types
 #
-class _Enumeration(C.c_uint):
+class Enumeration(C.c_uint):
     def __repr__(self):
         return "%s(%d)" % (self.__class__.__name__, self.value)
     def __eq__(self, other):
@@ -124,7 +117,7 @@ class _Enumeration(C.c_uint):
             raise ValueError("Cannot mix enumeration members")
         return C.c_uint(obj.value)
 
-class ImageType(_Enumeration): pass
+class ImageType(Enumeration): pass
 IMAQ_IMAGE_U8      = ImageType(0)
 IMAQ_IMAGE_U16     = ImageType(7)
 IMAQ_IMAGE_I16     = ImageType(1)
@@ -153,6 +146,13 @@ class Point(C.Structure):
     _fields_ = [("x", C.c_int),
                 ("y", C.c_int)]
 IMAQ_NO_POINT = Point(-1, -1)
+
+class Annulus(C.Structure):
+    _fields_ = [("center", Point),
+                ("innerRadius", C.c_int),
+                ("outerRadius", C.c_int),
+                ("startAngle", C.c_double),
+                ("endAngle", C.c_double)]
 
 class PointFloat(C.Structure):
     _fields_ = [("x", C.c_float),
