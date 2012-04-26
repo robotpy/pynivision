@@ -1,4 +1,4 @@
-from . import core
+from . import private
 import socket
 import re
 
@@ -68,5 +68,5 @@ def imaqCameraRead(image, address, settings=None, operation=CAMERA_READ):
             self.socket = None
 
     if data:
-        core.Priv_ReadJPEGString(image, data)
+        private.Priv_ReadJPEGString(image, data)
 
