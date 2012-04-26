@@ -1,17 +1,16 @@
-from ctypes import *
-import io
-import sys
+import ctypes as C
+import sys as _sys
 
 # DLL and function type
-if sys.platform.startswith('win'):
-    dll = windll.nivision
-    functype = WINFUNCTYPE
+if _sys.platform.startswith('win'):
+    _dll = C.windll.nivision
+    _functype = C.WINFUNCTYPE
 else:
-    dll = cdll.nivision
-    functype = CFUNCTYPE
+    _dll = C.cdll.nivision
+    _functype = C.CFUNCTYPE
 
 # struct Image wrapper (opaque struct)
-class Image(c_void_p):
+class Image(C.c_void_p):
     """An imaq Image."""
     def __del__(self):
         if self.value != 0:
@@ -41,8 +40,8 @@ def _errcheck_ptr(result, func, args):
         raise ImaqError
     return args
 
-def STDFUNC(name, *params, library=dll, errcheck=_errcheck):
-    prototype = functype(c_int, *tuple(param[1] for param in params))
+def STDFUNC(name, *params, library=_dll, errcheck=_errcheck):
+    prototype = _functype(C.c_int, *tuple(param[1] for param in params))
     paramflags = []
     for param in params:
         if len(param) == 3:
@@ -54,8 +53,8 @@ def STDFUNC(name, *params, library=dll, errcheck=_errcheck):
         func.errcheck = errcheck
     return func
 
-def STDPTRFUNC(name, restype, *params, library=dll, errcheck=_errcheck_ptr):
-    prototype = functype(restype, *tuple(param[1] for param in params))
+def STDPTRFUNC(name, restype, *params, library=_dll, errcheck=_errcheck_ptr):
+    prototype = _functype(restype, *tuple(param[1] for param in params))
     paramflags = []
     for param in params:
         if len(param) == 3:
@@ -70,7 +69,7 @@ def STDPTRFUNC(name, restype, *params, library=dll, errcheck=_errcheck_ptr):
 #
 # Enumerated Types
 #
-class Enumeration(c_uint):
+class _Enumeration(C.c_uint):
     def __repr__(self):
         return "%s(%d)" % (self.__class__.__name__, self.value)
     def __eq__(self, other):
@@ -83,9 +82,9 @@ class Enumeration(c_uint):
     def from_param(cls, obj):
         if obj.__class__ != cls:
             raise ValueError("Cannot mix enumeration members")
-        return c_uint(obj.value)
+        return C.c_uint(obj.value)
 
-class ImageType(Enumeration): pass
+class ImageType(_Enumeration): pass
 IMAQ_IMAGE_U8      = ImageType(0)
 IMAQ_IMAGE_U16     = ImageType(7)
 IMAQ_IMAGE_I16     = ImageType(1)
@@ -110,30 +109,30 @@ _image_type_size = {
 #
 # Data Structures
 #
-class Point(Structure):
-    _fields_ = [("x", c_int),
-                ("y", c_int)]
+class Point(C.Structure):
+    _fields_ = [("x", C.c_int),
+                ("y", C.c_int)]
 IMAQ_NO_POINT = Point(-1, -1)
 
-class PointFloat(Structure):
-    _fields_ = [("x", c_float),
-                ("y", c_float)]
+class PointFloat(C.Structure):
+    _fields_ = [("x", C.c_float),
+                ("y", C.c_float)]
 IMAQ_NO_POINT_FLOAT = PointFloat(-1, -1)
 IMAQ_NO_OFFSET = PointFloat(0, 0)
 
-class Rect(Structure):
-    _fields_ = [("top", c_int),
-                ("left", c_int),
-                ("height", c_int),
-                ("width", c_int)]
+class Rect(C.Structure):
+    _fields_ = [("top", C.c_int),
+                ("left", C.c_int),
+                ("height", C.c_int),
+                ("width", C.c_int)]
 IMAQ_NO_RECT = Rect(0, 0, 0x7FFFFFFF, 0x7FFFFFFF)
 
-class RotatedRect(Structure):
-    _fields_ = [("top", c_int),
-                ("left", c_int),
-                ("height", c_int),
-                ("width", c_int),
-                ("angle", c_double)]
+class RotatedRect(C.Structure):
+    _fields_ = [("top", C.c_int),
+                ("left", C.c_int),
+                ("height", C.c_int),
+                ("width", C.c_int),
+                ("angle", C.c_double)]
 IMAQ_NO_ROTATED_RECT = RotatedRect(0, 0, 0x7FFFFFFF, 0x7FFFFFFF, 0)
 
 #
@@ -141,25 +140,25 @@ IMAQ_NO_ROTATED_RECT = RotatedRect(0, 0, 0x7FFFFFFF, 0x7FFFFFFF, 0)
 #
 imaqClearError = STDFUNC("imaqClearError")
 
-_imaqGetErrorText = STDPTRFUNC("imaqGetErrorText", c_void_p,
-        ("errorCode", c_int), errcheck=None)
+_imaqGetErrorText = STDPTRFUNC("imaqGetErrorText", C.c_void_p,
+        ("errorCode", C.c_int), errcheck=None)
 def imaqGetErrorText(errorCode):
     d = _imaqGetErrorText(errorCode)
     if d is None or d == 0:
         return "Unknown Error."
-    s = string_at(d)
+    s = C.string_at(d)
     imaqDispose(d)
     return str(s, 'utf8')
 
 imaqGetLastError = STDFUNC("imaqGetLastError", errcheck=None)
 
-_imaqGetLastErrorFunc = STDPTRFUNC("imaqGetLastErrorFunc", c_char_p,
+_imaqGetLastErrorFunc = STDPTRFUNC("imaqGetLastErrorFunc", C.c_char_p,
         errcheck=None)
 def imaqGetLastErrorFunc():
     return str(_imaqGetLastErrorFunc(), 'utf8')
 
-_imaqSetError = STDFUNC("imaqSetError", ("errorCode", c_int),
-        ("function", c_char_p), errcheck=None)
+_imaqSetError = STDFUNC("imaqSetError", ("errorCode", C.c_int),
+        ("function", C.c_char_p), errcheck=None)
 def imaqSetError(errorCode, function):
     if isinstance(function, str):
         b = function.encode('utf8')
@@ -170,7 +169,7 @@ def imaqSetError(errorCode, function):
 #
 # Memory Management functions
 #
-_imaqDispose = STDFUNC("imaqDispose", ("object", c_void_p))
+_imaqDispose = STDFUNC("imaqDispose", ("object", C.c_void_p))
 def imaqDispose(object):
     _imaqDispose(object)
     if hasattr(object, "value"):
@@ -180,19 +179,20 @@ def imaqDispose(object):
 # Image Management functions
 #
 imaqArrayToImage = STDFUNC("imaqArrayToImage", ("image", Image),
-        ("array", c_void_p), ("numCols", c_int), ("numRows", c_int))
+        ("array", C.c_void_p), ("numCols", C.c_int), ("numRows", C.c_int))
 
 imaqCreateImage = STDPTRFUNC("imaqCreateImage", Image, ("type", ImageType),
-        ("borderSize", c_int, 0))
+        ("borderSize", C.c_int, 0))
 
-_imaqImageToArray = STDPTRFUNC("imaqImageToArray", c_void_p, ("image", Image),
-        ("rect", Rect), ("cols", POINTER(c_int)), ("rows", POINTER(c_int)))
+_imaqImageToArray = STDPTRFUNC("imaqImageToArray", C.c_void_p, ("image", Image),
+        ("rect", Rect), ("cols", C.POINTER(C.c_int)),
+        ("rows", C.POINTER(C.c_int)))
 def imaqImageToArray(image, rect=IMAQ_NO_RECT):
-    cols = c_int()
-    rows = c_int()
-    d = _imaqImageToArray(image, rect, byref(cols), byref(rows))
+    cols = C.c_int()
+    rows = C.c_int()
+    d = _imaqImageToArray(image, rect, C.byref(cols), C.byref(rows))
     t = imaqGetImageType(image)
-    data = string_at(d, cols.value*rows.value*_image_type_size[t])
+    data = C.string_at(d, cols.value*rows.value*_image_type_size[t])
     imaqDispose(d)
     return data, cols.value, rows.value
 
@@ -200,10 +200,10 @@ def imaqImageToArray(image, rect=IMAQ_NO_RECT):
 # Image Information functions
 #
 _imaqGetImageType = STDFUNC("imaqGetImageType", ("image", Image),
-        ("type", POINTER(ImageType)))
+        ("type", C.POINTER(ImageType)))
 def imaqGetImageType(image):
     t = ImageType(0)
-    _imaqGetImageType(image, byref(t))
+    _imaqGetImageType(image, C.byref(t))
     return t
 
 #
@@ -229,10 +229,10 @@ def imaqMakeRotatedRect(top, left, height, width, angle):
 # exported on Windows.
 Priv_ReadJPEGString = None
 try:
-    _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", c_char_p), ("len", c_uint))
+    _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", C.c_char_p), ("len", C.c_uint))
 except AttributeError:
     try:
-        _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", c_char_p), ("len", c_uint), library=windll.nivissvc)
+        _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", C.c_char_p), ("len", C.c_uint), library=C.windll.nivissvc)
     except AttributeError:
         _Priv_ReadJPEGString_C = None
 if _Priv_ReadJPEGString_C is not None:
@@ -265,15 +265,16 @@ if Priv_ReadJPEGString is None:
 # Fall back to PIL (http://www.lfd.uci.edu/~gohlke/pythonlibs/#pil)
 if Priv_ReadJPEGString is None:
     try:
-        from PIL import Image as PILImage
+        from PIL import Image as _PILImage
     except ImportError:
         try:
-            import Image as PILImage
+            import Image as _PILImage
         except ImportError:
-            PILImage = None
-    if PILImage is not None:
+            _PILImage = None
+    if _PILImage is not None:
+        import io as _io
         def Priv_ReadJPEGString(image, data):
-            im = PILImage.open(io.BytesIO(data))
+            im = _PILImage.open(_io.BytesIO(data))
             # only works with RGB for now
             if imaqGetImageType(image) != IMAQ_IMAGE_RGB:
                 raise ImaqError(-1074396080) # ERR_INVALID_IMAGE_TYPE
@@ -287,10 +288,10 @@ if Priv_ReadJPEGString is None:
 # Fall back to Qt4
 #if Priv_ReadJPEGString is None:
 #    try:
-#        from PyQt4 import QtGui
-#        if "jpg" in QtGui.QImageReader.supportedImageFormats():
+#        from PyQt4 import QtGui as _QtGui
+#        if "jpg" in _QtGui.QImageReader.supportedImageFormats():
 #            def Priv_ReadJPEGString(image, data):
-#                img = QtGui.QImage.fromData(data, "JPG")
+#                img = _QtGui.QImage.fromData(data, "JPG")
 #    except ImportError:
 #        pass
 
@@ -302,3 +303,4 @@ if Priv_ReadJPEGString is None:
 # alias for code ported from C
 Priv_ReadJPEGString_C = Priv_ReadJPEGString
 
+del C # clean namespace
