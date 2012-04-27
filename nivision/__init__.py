@@ -8,6 +8,7 @@ __version__ = "0.1"
 __date__    = "25 Apr 2012"
 
 from . import core
+from . import private
 from .core import *
 from .management import *
 from .information import *

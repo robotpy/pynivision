@@ -40,24 +40,31 @@ def _errcheck_ptr(result, func, args):
         raise ImaqError
     return args
 
-def RETFUNC(name, restype, *params, library=_dll, errcheck=None):
+def RETFUNC(name, restype, *params, out=None, library=_dll, errcheck=None):
     prototype = _functype(restype, *tuple(param[1] for param in params))
     paramflags = []
     for param in params:
-        if len(param) == 3:
-            paramflags.append((1, param[0], param[2]))
+        if out is not None and param[0] in out:
+            dir = 2
         else:
-            paramflags.append((1, param[0]))
+            dir = 1
+        if len(param) == 3:
+            paramflags.append((dir, param[0], param[2]))
+        else:
+            paramflags.append((dir, param[0]))
     func = prototype((name, library), tuple(paramflags))
     if errcheck is not None:
         func.errcheck = errcheck
     return func
 
-def STDFUNC(name, *params, library=_dll, errcheck=_errcheck):
-    return RETFUNC(name, C.c_int, *params, library=library, errcheck=errcheck)
+def STDFUNC(name, *params, out=None, library=_dll, errcheck=_errcheck):
+    return RETFUNC(name, C.c_int, *params, out=out, library=library,
+            errcheck=errcheck)
 
-def STDPTRFUNC(name, restype, *params, library=_dll, errcheck=_errcheck_ptr):
-    return RETFUNC(name, restype, *params, library=library, errcheck=errcheck)
+def STDPTRFUNC(name, restype, *params, out=None, library=_dll,
+        errcheck=_errcheck_ptr):
+    return RETFUNC(name, restype, *params, out=out, library=library,
+            errcheck=errcheck)
 
 #
 # Error Management functions
