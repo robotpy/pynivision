@@ -3,15 +3,15 @@
 ********************************************
 
 :Author: Peter Johnson, FRC Team 294
-:Copyright: Copyright ÃÂÃÂ© 2012 Peter Johnson
+:Copyright: Copyright |copy| 2012 Peter Johnson
 
 About
 =======
 
-`NI Vision`_ is a `National Instruments` image/vision processing library.
+`NI Vision`_ is a `National Instruments`_ image/vision processing library.
 It is available for multiple platforms including Windows and the
 CompactRIO.  This project makes the functionality of NI Vision available
-in the `Python` programming language.
+in the `Python`_ programming language.
 
 .. _NI Vision: http://www.ni.com/vision/
 .. _National Instruments: http://www.ni.com/
@@ -26,7 +26,7 @@ Requirements
 ==============
 
 The wrappers currently require ctypes, so this library is currently not usable
-on platforms that don't have ctypes.  Unfortunately this includes `RobotPy` as
+on platforms that don't have ctypes.  Unfortunately this includes `RobotPy`_ as
 of this writing, but this is being worked on.
 
 .. _RobotPy: https://github.com/robotpy/robotpy
@@ -72,7 +72,7 @@ nivision/private.py and nivision/gdiplus.py.
 License
 =========
 
-Copyright ÃÂ© 2010 Peter Johnson
+Copyright |copy| 2012 Peter Johnson.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
