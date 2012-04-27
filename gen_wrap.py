@@ -10,6 +10,10 @@ exclude = set([
         "IMAQ_CALLBACK",
         # structures
         "Image",
+        # functions
+        "imaqGetLastError",
+        "imaqSetError",
+        "imaqDispose",
         ])
 
 # block comment exclusion list
@@ -24,16 +28,19 @@ block_comment_exclude = set([
 # #define name value
 number_re = re.compile(r'-?[0-9]+')
 constant_re = re.compile(r'[A-Z0-9_]+')
-define_re = re.compile(r'^#define (?P<name>(IMAQ|ERR)_[A-Z0-9_]+)\s+(?P<value>[-"{}()a-zA-Z0-9_][-"{}()a-zA-Z0-9_ \t\\,.]*)')
-enum_re = re.compile(r'^typedef enum (?P<name>[A-Za-z0-9]+)_enum {')
+define_re = re.compile(r'^#define\s+(?P<name>(IMAQ|ERR)_[A-Z0-9_]+)\s+(?P<value>.*)')
+enum_re = re.compile(r'^typedef\s+enum\s+(?P<name>[A-Za-z0-9]+)_enum\s*{')
 enum_value_re = re.compile(r'^\s*(?P<name>[A-Z0-9_]+)\s*=\s*(?P<value>-?[0-9A-Fx]+)\s*,?')
-struct_re = re.compile(r'^typedef struct (?P<name>[A-Za-z0-9]+)_struct {')
-union_re = re.compile(r'^typedef union (?P<name>[A-Za-z0-9]+)_union {')
-func_pointer_re = re.compile(r'(?P<restype>[A-Za-z0-9_]+)\s*\(\s*[A-Za-z0-9_]*[*]\s*(?P<name>[A-Za-z0-9_]+)\s*\)\s*\((?P<params>[^)]*)\)')
+struct_re = re.compile(r'^typedef\s+struct\s+(?P<name>[A-Za-z0-9]+)_struct\s*{')
+union_re = re.compile(r'^typedef\s+union\s+(?P<name>[A-Za-z0-9]+)_union\s*{')
+func_pointer_re = re.compile(r'(?P<restype>[A-Za-z0-9_*]+)\s*\(\s*[A-Za-z0-9_]*[*]\s*(?P<name>[A-Za-z0-9_]+)\s*\)\s*\((?P<params>[^)]*)\)')
+static_const_re = re.compile(r'^static\s+const\s+(?P<type>[A-Za-z0-9_]+)\s+(?P<name>[A-Za-z0-9_]+)\s*=\s*(?P<value>[^;]+);')
+function_re = re.compile(r'^(IMAQ_FUNC\s+)?(?P<restype>(const\s+)?[A-Za-z0-9_*]+)\s+(IMAQ_STDCALL\s+)?(?P<name>[A-Za-z0-9_]+)\s*\((?P<params>[^)]*)\);')
 
 # defines deferred until after structures
 define_after_struct = []
 defined = set()
+enums = set()
 
 class CtypesEmitter:
     def __init__(self, out):
@@ -54,7 +61,7 @@ class CtypesEmitter:
         elif value == "FALSE":
             clean = "False"
         elif name.startswith("IMAQ_INIT_RGB") and value[0] == '{' and value[-1] == '}':
-            clean = "RGBValue(%s)" % ' '.join(value[1:-1].split())
+            clean = "RGBValue(%s)" % ' '.join(value[1:-1].strip().split())
             after_struct = True
         elif value.startswith("imaqMake"):
             clean = value[8:]
@@ -70,10 +77,20 @@ class CtypesEmitter:
             return
 
         if after_struct:
-            define_after_struct.append("%s = %s" % (name, clean))
+            define_after_struct.append((name, "%s = %s" % (name, clean)))
             return
 
         print("%s = %s" % (name, clean), file=self.out)
+        defined.add(name)
+
+    def text(self, text):
+        print(text, file=self.out)
+
+    def static_const(self, name, ctype, value):
+        if hasattr(value, "__iter__"):
+            print("%s = %s(%s)" % (name, ctype, ", ".join(value)), file=self.out)
+        else:
+            print("%s = %s" % (name, value), file=self.out)
         defined.add(name)
 
     def enum(self, name, values):
@@ -84,8 +101,10 @@ class CtypesEmitter:
             if vname.endswith("SIZE_GUARD"):
                 continue
             print("%s = %s(%s)" % (vname, name, value), file=self.out)
+            defined.add(vname)
         print("", file=self.out)
         defined.add(name)
+        enums.add(name)
 
     ctypes_map = {
             "int": "c_int",
@@ -117,6 +136,8 @@ class CtypesEmitter:
     def c_to_ctype(self, name, arr):
         if arr:
             arr = '*'+arr
+        if name.startswith("const"):
+            name = name[5:].strip()
         ctype = self.ctypes_map.get(name, None)
         if ctype is not None:
             return "ctypes." + ctype + arr
@@ -148,6 +169,28 @@ class CtypesEmitter:
             paramstr = ", " + ", ".join(self.c_to_ctype(ctype, arr) for name, ctype, arr in params)
         print("%s = CFUNCTYPE(%s%s)" %
                 (name, self.c_to_ctype(restype, ""), paramstr), file=self.out)
+        defined.add(name)
+
+    def function(self, name, restype, params):
+        if name in exclude:
+            return
+        paramstr = ""
+        if params:
+            paramstr = ", ".join('("%s", %s)' %
+                    (name, self.c_to_ctype(ctype, arr))
+                    for name, ctype, arr in params if name != 'void')
+        # common return cases
+        if restype == "int":
+            functype = "STDFUNC"
+            restypestr = ""
+        else:
+            if restype[-1] == "*":
+                functype = "STDPTRFUNC"
+            else:
+                functype = "RETFUNC"
+            restypestr = "%s, " % self.c_to_ctype(restype, "")
+        print('%s = %s("%s", %s%s)' %
+                (name, functype, name, restypestr, paramstr), file=self.out)
         defined.add(name)
 
     def structunion(self, ctype, name, fields):
@@ -200,6 +243,11 @@ def parse_file(emit, f):
                 if cur_block not in block_comment_exclude:
                     emit.block_comment(cur_block)
                 in_block_comment = False
+                # emit "after struct" constants in Globals
+                if cur_block == "Globals":
+                    for dname, dtext in define_after_struct:
+                        emit.text(dtext)
+                        defined.add(dname)
                 continue
             if not code and comment is not None:
                 # remember current block
@@ -219,7 +267,7 @@ def parse_file(emit, f):
             continue
 
         # inside struct/union
-        if in_struct is not None or in_enum is not None:
+        if in_struct is not None or in_union is not None:
             if code[0] == '}':
                 # closing
                 if in_struct is not None:
@@ -270,12 +318,7 @@ def parse_file(emit, f):
             # typedef function?
             m = func_pointer_re.match(code[8:-1])
             if m is not None:
-                params = []
-                for param in m.group('params').strip().split(','):
-                    param = param.strip()
-                    if not param:
-                        continue
-                    params.append(parse_cdecl(param))
+                params = [parse_cdecl(param.strip()) for param in m.group('params').strip().split(',') if param.strip()]
                 emit.typedef_function(m.group('name'), m.group('restype'), params)
                 continue
             if '(' in code:
@@ -283,6 +326,27 @@ def parse_file(emit, f):
                 continue
             emit.typedef(*parse_cdecl(code[8:-1]))
             continue
+
+        # function
+        m = function_re.match(code)
+        if m is not None:
+            params = [parse_cdecl(param.strip()) for param in m.group('params').strip().split(',') if param.strip()]
+            emit.function(m.group('name'), m.group('restype'), params)
+            continue
+
+        # static const
+        m = static_const_re.match(code)
+        if m is not None:
+            value = m.group('value')
+            if value[0] == '{':
+                value = [v.strip() for v in value[1:-1].strip().split(',') if v.strip()]
+            emit.static_const(m.group('name'), m.group('type'), value)
+            continue
+
+        if not code or code[0] == '#':
+            continue
+
+        print("Unrecognized: %s" % code)
 
 if __name__ == "__main__":
     parse_file(CtypesEmitter(open(sys.argv[2], "wt")), open(sys.argv[1]))
