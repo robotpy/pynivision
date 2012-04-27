@@ -4,7 +4,8 @@
 import ctypes
 import sys
 from . import core
-from .core import Image, STDFUNC, imaqArrayToImage, imaqGetImageType
+from .core import Image, STDFUNC, imaqArrayToImage, imaqGetImageType, \
+        ImaqError, ERR_INVALID_IMAGE_TYPE
 
 __all__ = ["Priv_ReadJPEGString", "Priv_ReadJPEGString_C"]
 
@@ -40,7 +41,7 @@ if Priv_ReadJPEGString is None:
             elif t == core.IMAQ_IMAGE_RGB_U64:
                 pf = gdiplus.PixelFormat64bppARGB
             else:
-                raise ImaqError(-1074396080) # ERR_INVALID_IMAGE_TYPE
+                raise ImaqError(ERR_INVALID_IMAGE_TYPE)
 
             def cb(pixels, cols, rows):
                 imaqArrayToImage(image, pixels, cols, rows)
@@ -64,7 +65,7 @@ if Priv_ReadJPEGString is None:
             im = _PILImage.open(io.BytesIO(data))
             # only works with RGB for now
             if imaqGetImageType(image) != core.IMAQ_IMAGE_RGB:
-                raise ImaqError(-1074396080) # ERR_INVALID_IMAGE_TYPE
+                raise ImaqError(ERR_INVALID_IMAGE_TYPE)
             if im.mode == "RGB":
                 pixels = im.tobytes("raw", "RGBX")
             elif im.mode == "RGBA":
