@@ -37,10 +37,6 @@ def imaqUseMaxAvailableCores():
     v = ctypes.c_uint()
     _imaqMulticoreOptions(IMAQ_USE_MAX_AVAILABLE, ctypes.byref(v))
 
-# custom (for now) for default parameter
-imaqCreateImage = STDPTRFUNC("imaqCreateImage", Image,
-        ("type", ImageType), ("borderSize", ctypes.c_int, 0))
-
 # custom to handle data copy
 def imaqImageToArray(image, rect=IMAQ_NO_RECT):
     cols = ctypes.c_int()

@@ -18,7 +18,6 @@ exclude = set([
         "imaqGetLastErrorFunc",
         "imaqSetError",
         # management functions
-        "imaqCreateImage",
         "imaqDispose",
         # Make* functions are faster in native Python
         "imaqMakeAnnulus",
@@ -35,6 +34,11 @@ underscored = set([
         "imaqImageToArray",
         ])
 
+# default parameters
+default_params = dict(
+        imaqCreateImage=dict(borderSize=0),
+        )
+
 # block comment exclusion list
 block_comment_exclude = set([
         "Includes",
@@ -45,7 +49,7 @@ block_comment_exclude = set([
         "Error Management functions",
         ])
 
-# #define name value
+# parser regular expressions
 number_re = re.compile(r'-?[0-9]+')
 constant_re = re.compile(r'[A-Z0-9_]+')
 define_re = re.compile(r'^#define\s+(?P<name>(IMAQ|ERR)_[A-Z0-9_]+)\s+(?P<value>.*)')
@@ -201,11 +205,19 @@ class CtypesEmitter:
             return
         paramstr = ""
         if params:
-            paramstr = ", ".join('("%s", %s)' %
-                    (name, self.c_to_ctype(ctype, arr))
-                    for name, ctype, arr in params if name != 'void')
-            if paramstr:
-                paramstr = ", " + paramstr
+            defaults = default_params.get(name, {})
+            paramstrs = []
+            for pname, ptype, arr in params:
+                if pname == "void":
+                    continue
+                ctype = self.c_to_ctype(ptype, arr)
+                if pname in defaults:
+                    paramstr = '("%s", %s, %s)' % (pname, ctype, repr(defaults[pname]))
+                else:
+                    paramstr = '("%s", %s)' % (pname, ctype)
+                paramstrs.append(paramstr)
+            if paramstrs:
+                paramstr = ", " + ", ".join(paramstrs)
         # common return cases
         if restype == "int":
             functype = "STDFUNC"
