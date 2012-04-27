@@ -22,18 +22,8 @@ class ImaqError(Exception):
         else:
             return "%s" % imaqGetErrorText(self.code)
 
-def _errcheck(result, func, args):
-    if result == 0:
-        raise ImaqError
-    return args
-
-def _errcheck_ptr(result, func, args):
-    if (result is None or result == 0 or getattr(result, "value", 1) is None or
-            getattr(result, "value", 1) == 0):
-        raise ImaqError
-    return args
-
-def RETFUNC(name, restype, *params, out=None, library=_dll, errcheck=None):
+def RETFUNC(name, restype, *params, out=None, library=_dll,
+        errcheck=None, handle_missing=True):
     prototype = _functype(restype, *tuple(param[1] for param in params))
     paramflags = []
     for param in params:
@@ -50,18 +40,31 @@ def RETFUNC(name, restype, *params, out=None, library=_dll, errcheck=None):
         if errcheck is not None:
             func.errcheck = errcheck
     except AttributeError:
+        if not handle_missing:
+            raise
         def func(*args, **kwargs):
             raise NotImplementedError
     return func
 
-def STDFUNC(name, *params, out=None, library=_dll, errcheck=_errcheck):
-    return RETFUNC(name, ctypes.c_int, *params, out=out, library=library,
-            errcheck=errcheck)
+def STDFUNC(name, *params, **kwargs):
+    def errcheck(result, func, args):
+        if result == 0:
+            raise ImaqError
+        return args
 
-def STDPTRFUNC(name, restype, *params, out=None, library=_dll,
-        errcheck=_errcheck_ptr):
-    return RETFUNC(name, restype, *params, out=out, library=library,
-            errcheck=errcheck)
+    kwargs.setdefault("errcheck", errcheck)
+    return RETFUNC(name, ctypes.c_int, *params, **kwargs)
+
+def STDPTRFUNC(name, restype, *params, **kwargs):
+    def errcheck(result, func, args):
+        if (result is None or result == 0
+                or getattr(result, "value", 1) is None
+                or getattr(result, "value", 1) == 0):
+            raise ImaqError
+        return args
+
+    kwargs.setdefault("errcheck", errcheck)
+    return RETFUNC(name, restype, *params, **kwargs)
 
 #
 # Error Management functions

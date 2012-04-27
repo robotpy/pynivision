@@ -2,6 +2,7 @@
 # Private functions
 #
 import ctypes
+import sys
 from . import core
 from .core import Image, STDFUNC, imaqArrayToImage, imaqGetImageType
 
@@ -10,13 +11,18 @@ __all__ = ["Priv_ReadJPEGString", "Priv_ReadJPEGString_C"]
 # ReadJPEGString: try to use the LabView one first... but currently this isn't
 # exported on Windows.
 Priv_ReadJPEGString = None
-try:
-    _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", ctypes.c_char_p), ("len", ctypes.c_uint))
-except AttributeError:
+_Priv_ReadJPEGString_C = None
+for lib in ["nivision", "nivissvc"]:
     try:
-        _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", ctypes.c_char_p), ("len", ctypes.c_uint), library=ctypes.windll.nivissvc)
-    except AttributeError:
-        _Priv_ReadJPEGString_C = None
+        if sys.platform.startswith('win'):
+            dll = ctypes.WinDLL(lib)
+        else:
+            dll = ctypes.CDLL(lib)
+        _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C",
+                ("image", Image), ("data", ctypes.c_char_p),
+                ("len", ctypes.c_uint), library=dll, handle_missing=False)
+    except (AttributeError, WindowsError):
+        pass
 if _Priv_ReadJPEGString_C is not None:
     def Priv_ReadJPEGString(image, data):
         _Priv_ReadJPEGString_C(image, data, len(data))
