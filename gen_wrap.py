@@ -10,13 +10,28 @@ exclude = set([
         "IMAQ_CALLBACK",
         # structures
         "Image",
-        # functions
+        # error functions
         "imaqClearError",
         "imaqGetErrorText",
         "imaqGetLastError",
         "imaqGetLastErrorFunc",
         "imaqSetError",
+        # management functions
+        "imaqCreateImage",
         "imaqDispose",
+        # Make* functions are faster in native Python
+        "imaqMakeAnnulus",
+        "imaqMakePoint",
+        "imaqMakePointFloat",
+        "imaqMakeRect",
+        "imaqMakeRotatedRect",
+        "imaqMakeRotatedRectFromRect",
+        ])
+
+# underscored list; these are private and wrapped by additional Python code
+underscored = set([
+        "imaqMulticoreOptions",
+        "imaqImageToArray",
         ])
 
 # block comment exclusion list
@@ -118,6 +133,7 @@ class CtypesEmitter:
             "short": "c_short",
             "unsigned short": "c_ushort",
             "int": "c_int",
+            "unsigned": "c_uint",
             "unsigned int": "c_uint",
             "long": "c_long",
             "unsigned long": "c_ulong",
@@ -135,7 +151,7 @@ class CtypesEmitter:
             "wchar_t*": "c_wchar_p",
             "void *": "c_void_p",
             "void*": "c_void_p",
-            "void": "None",
+            "size_t": "c_size_t",
             }
     def c_to_ctype(self, name, arr):
         if arr:
@@ -145,12 +161,14 @@ class CtypesEmitter:
         ctype = self.ctypes_map.get(name, None)
         if ctype is not None:
             return "ctypes." + ctype + arr
+        if name == "void":
+            return "None"
         # Image opaque structure is treated specially
         if name.startswith("Image*") or name.startswith("Image *"):
             name = "Image"
         # handle pointers recursively
         if name[-1] == '*':
-            name = "POINTER(%s)" % self.c_to_ctype(name[:-1], "")
+            name = "ctypes.POINTER(%s)" % self.c_to_ctype(name[:-1], "")
         return name + arr
 
     def typedef(self, name, typedef, arr):
@@ -173,7 +191,7 @@ class CtypesEmitter:
             paramstr = ", ".join(self.c_to_ctype(ctype, arr) for name, ctype, arr in params if name != 'void')
             if paramstr:
                 paramstr = ", " + paramstr
-        print("%s = CFUNCTYPE(%s%s)" %
+        print("%s = ctypes.CFUNCTYPE(%s%s)" %
                 (name, self.c_to_ctype(restype, ""), paramstr), file=self.out)
         defined.add(name)
 
@@ -197,8 +215,9 @@ class CtypesEmitter:
             else:
                 functype = "RETFUNC"
             restypestr = ", %s" % self.c_to_ctype(restype, "")
-        print('%s = %s("%s"%s%s)' %
-                (name, functype, name, restypestr, paramstr), file=self.out)
+        print('%s%s = %s("%s"%s%s)' %
+                ("_" if name in underscored else "", name, functype, name,
+                    restypestr, paramstr), file=self.out)
         defined.add(name)
 
     def structunion(self, ctype, name, fields):
@@ -234,7 +253,7 @@ def parse_file(emit, f):
     in_enum = None
     in_struct = None
     in_union = None
-    for line in f.readlines():
+    for line in f:
         if line.startswith('/*'):
             continue
         parts = line.split('//', 1)
@@ -357,4 +376,9 @@ def parse_file(emit, f):
         print("Unrecognized: %s" % code)
 
 if __name__ == "__main__":
-    parse_file(CtypesEmitter(open(sys.argv[2], "wt")), open(sys.argv[1]))
+    out = open("nivision/core.py", "wt")
+    for line in open("ctypes_core_prefix.py"):
+        print(line, end='', file=out)
+    parse_file(CtypesEmitter(out), open(sys.argv[1]))
+    for line in open("ctypes_core_suffix.py"):
+        print(line, end='', file=out)

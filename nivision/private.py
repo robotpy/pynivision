@@ -1,11 +1,9 @@
 #
 # Private functions
 #
-import ctypes as C
+import ctypes
 from . import core
-from .core import Image, STDFUNC
-from .management import imaqArrayToImage
-from .information import imaqGetImageType
+from .core import Image, STDFUNC, imaqArrayToImage, imaqGetImageType
 
 __all__ = ["Priv_ReadJPEGString", "Priv_ReadJPEGString_C"]
 
@@ -13,10 +11,10 @@ __all__ = ["Priv_ReadJPEGString", "Priv_ReadJPEGString_C"]
 # exported on Windows.
 Priv_ReadJPEGString = None
 try:
-    _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", C.c_char_p), ("len", C.c_uint))
+    _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", ctypes.c_char_p), ("len", ctypes.c_uint))
 except AttributeError:
     try:
-        _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", C.c_char_p), ("len", C.c_uint), library=C.windll.nivissvc)
+        _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C", ("image", Image), ("data", ctypes.c_char_p), ("len", ctypes.c_uint), library=ctypes.windll.nivissvc)
     except AttributeError:
         _Priv_ReadJPEGString_C = None
 if _Priv_ReadJPEGString_C is not None:
