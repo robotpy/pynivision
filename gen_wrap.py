@@ -1,4 +1,5 @@
 import sys
+import os
 import re
 
 # exclusion list; no code is generated for these
@@ -376,9 +377,35 @@ def parse_file(emit, f):
         print("Unrecognized: %s" % code)
 
 if __name__ == "__main__":
+    # determine the file to open
+    fname = None
+
+    # if specified on the command line, prefer that
+    if len(sys.argv) > 2:
+        fname = sys.argv[1]
+
+    # otherwise look in the current directory
+    if os.path.exists("nivision.h"):
+        fname = "nivision.h"
+
+    # otherwise try to get it from the IMAQ Vision directory
+    if not fname:
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\National Instruments\IMAQ Vision\CurrentVersion', access=winreg.KEY_QUERY_VALUE)
+            imaqpath = winreg.QueryValueEx(key, 'Path')[0]
+            fname = os.path.join(imaqpath, "Include", "nivision.h")
+        except (ImportError, WindowsError, IndexError):
+            pass
+
+    if not fname:
+        print("Could not find nivision.h")
+        sys.exit(1)
+
+    inf = open(fname)
     out = open("nivision/core.py", "wt")
     for line in open("ctypes_core_prefix.py"):
         print(line, end='', file=out)
-    parse_file(CtypesEmitter(out), open(sys.argv[1]))
+    parse_file(CtypesEmitter(out), inf)
     for line in open("ctypes_core_suffix.py"):
         print(line, end='', file=out)
