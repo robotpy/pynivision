@@ -9,13 +9,6 @@ else:
     _dll = ctypes.cdll.nivision
     _functype = ctypes.CFUNCTYPE
 
-# struct Image wrapper (opaque struct)
-class Image(ctypes.c_void_p):
-    """An imaq Image."""
-    def __del__(self):
-        if self.value != 0:
-            imaqDispose(self)
-
 #
 # Mapping from imaq error codes to Python exceptions
 #

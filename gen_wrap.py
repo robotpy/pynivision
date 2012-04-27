@@ -9,8 +9,6 @@ exclude = set([
         "IMAQ_FUNC",
         "IMAQ_STDCALL",
         "IMAQ_CALLBACK",
-        # structures
-        "Image",
         # error functions
         "imaqClearError",
         "imaqGetErrorText",
@@ -39,6 +37,11 @@ default_params = dict(
         imaqCreateImage=dict(borderSize=0),
         )
 
+# override output parameters
+not_output_params = dict(
+        imaqConvolve2=set(["kernel"]),
+        )
+
 # block comment exclusion list
 block_comment_exclude = set([
         "Includes",
@@ -64,6 +67,7 @@ function_re = re.compile(r'^(IMAQ_FUNC\s+)?(?P<restype>(const\s+)?[A-Za-z0-9_*]+
 # defines deferred until after structures
 define_after_struct = []
 defined = set()
+opaque_structs = set()
 enums = set()
 
 class CtypesEmitter:
@@ -74,6 +78,12 @@ class CtypesEmitter:
         print("#"*78, file=self.out)
         print("# %s" % comment, file=self.out)
         print("#"*78, file=self.out)
+
+    def opaque_struct(self, name):
+        print("class %s(ctypes.c_void_p):" % name, file=self.out)
+        print("    def __del__(self):", file=self.out)
+        print("        if self.value != 0:", file=self.out)
+        print("            imaqDispose(self)", file=self.out)
 
     def define(self, name, value, comment):
         if name in exclude:
@@ -168,9 +178,9 @@ class CtypesEmitter:
             return "ctypes." + ctype + arr
         if name == "void":
             return "None"
-        # Image opaque structure is treated specially
-        if name.startswith("Image*") or name.startswith("Image *"):
-            name = "Image"
+        # Opaque structures are treated specially
+        if name[:-1] in opaque_structs:
+            name = name[:-1]
         # handle pointers recursively
         if name[-1] == '*':
             name = "ctypes.POINTER(%s)" % self.c_to_ctype(name[:-1], "")
@@ -203,22 +213,9 @@ class CtypesEmitter:
     def function(self, name, restype, params):
         if name in exclude:
             return
-        paramstr = ""
-        if params:
-            defaults = default_params.get(name, {})
-            paramstrs = []
-            for pname, ptype, arr in params:
-                if pname == "void":
-                    continue
-                ctype = self.c_to_ctype(ptype, arr)
-                if pname in defaults:
-                    paramstr = '("%s", %s, %s)' % (pname, ctype, repr(defaults[pname]))
-                else:
-                    paramstr = '("%s", %s)' % (pname, ctype)
-                paramstrs.append(paramstr)
-            if paramstrs:
-                paramstr = ", " + ", ".join(paramstrs)
+
         # common return cases
+        funcargs = ['"%s"' % name]
         if restype == "int":
             functype = "STDFUNC"
             restypestr = ""
@@ -227,10 +224,70 @@ class CtypesEmitter:
                 functype = "STDPTRFUNC"
             else:
                 functype = "RETFUNC"
-            restypestr = ", %s" % self.c_to_ctype(restype, "")
-        print('%s%s = %s("%s"%s%s)' %
-                ("_" if name in underscored else "", name, functype, name,
-                    restypestr, paramstr), file=self.out)
+            funcargs.append(self.c_to_ctype(restype, ""))
+
+        customout = False # generate a custom wrapper function for out params
+        outparams = []
+        paramtypes = {}
+        if params:
+            defaults = default_params.get(name, {})
+            not_outputs = not_output_params.get(name, set())
+            for pname, ptype, arr in params:
+                if pname == "void":
+                    continue
+                ctype = self.c_to_ctype(ptype, arr)
+                paramtypes[pname] = (ptype, arr)
+                if pname in defaults:
+                    paramstr = '("%s", %s, %s)' % (pname, ctype, repr(defaults[pname]))
+                else:
+                    paramstr = '("%s", %s)' % (pname, ctype)
+                funcargs.append(paramstr)
+
+                # try to guess output parameters
+                if (pname not in not_outputs
+                        and name not in underscored
+                        and not ptype.startswith("const")
+                        and ptype[:-1] not in opaque_structs
+                        and ptype[-1] == "*"):
+                    if functype != "STDFUNC" or ptype[:-1] in enums:
+                        customout = True
+                    outparams.append(pname)
+
+        if not customout and outparams:
+            funcargs.append("out=[" + ", ".join('"%s"' % x for x in outparams) + "]")
+
+        print('%s%s = %s(%s)' %
+                ("_" if (name in underscored or customout) else "", name,
+                    functype, ", ".join(funcargs)), file=self.out)
+
+        if customout:
+            inparams = [x[0] for x in params if x[0] not in outparams]
+            print("def %s(%s):" % (name, ", ".join(inparams)), file=self.out)
+            retparams = []
+            for pname in outparams:
+                ptype = paramtypes[pname][0][:-1]
+                arr = paramtypes[pname][1]
+                ctype = self.c_to_ctype(ptype, arr)
+                print("    %s = %s(0)" % (pname, ctype), file=self.out)
+                if ptype in enums:
+                    retparams.append(pname)
+                else:
+                    retparams.append("%s.value" % pname)
+
+            callargs = []
+            for pname, ptype, arr in params:
+                if pname in outparams:
+                    callargs.append("ctypes.byref(%s)" % pname)
+                else:
+                    callargs.append(pname)
+
+            if functype == "STDFUNC":
+                print("    _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
+                print("    return %s" % ", ".join(retparams), file=self.out)
+            else:
+                print("    rv = _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
+                print("    return rv, %s" % ", ".join(retparams), file=self.out)
+
         defined.add(name)
 
     def structunion(self, ctype, name, fields):
@@ -260,18 +317,50 @@ def parse_cdecl(decl):
         arr = arr[:-1]
     return name, ctype, arr
 
+def split_comment(line):
+    if line.startswith('/*'):
+        return "", ""
+    parts = line.split('//', 1)
+    code = parts[0].strip()
+    comment = parts[1].strip() if len(parts) > 1 else None
+    return code, comment
+
+def prescan_file(f):
+    forward_structs = set()
+    structs = set()
+
+    for line in f:
+        code, comment = split_comment(line)
+        if not code and not comment:
+            continue
+
+        # typedef struct {
+        m = struct_re.match(code)
+        if m is not None:
+            structs.add(m.group('name'))
+            continue
+
+        # other typedef
+        if code.startswith("typedef"):
+            if '(' in code:
+                continue
+            name, typedef, arr = parse_cdecl(code[8:-1])
+            if typedef.startswith("struct"):
+                forward_structs.add(name)
+            continue
+
+    opaque_structs.update(forward_structs - structs)
+    exclude.update(opaque_structs)
+
 def parse_file(emit, f):
     in_block_comment = False
     cur_block = ""
     in_enum = None
     in_struct = None
     in_union = None
+
     for line in f:
-        if line.startswith('/*'):
-            continue
-        parts = line.split('//', 1)
-        code = parts[0].strip()
-        comment = parts[1].strip() if len(parts) > 1 else None
+        code, comment = split_comment(line)
         if not code and not comment:
             continue
         #print(comment)
@@ -415,9 +504,18 @@ if __name__ == "__main__":
         sys.exit(1)
 
     inf = open(fname)
+
+    # prescan for undefined structurs
+    prescan_file(inf)
+    inf.seek(0)
+
     out = open("nivision/core.py", "wt")
     for line in open("ctypes_core_prefix.py"):
         print(line, end='', file=out)
-    parse_file(CtypesEmitter(out), inf)
+    emit = CtypesEmitter(out)
+    emit.block_comment("Opaque Structures")
+    for name in sorted(opaque_structs):
+        emit.opaque_struct(name)
+    parse_file(emit, inf)
     for line in open("ctypes_core_suffix.py"):
         print(line, end='', file=out)
