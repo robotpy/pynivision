@@ -38,8 +38,13 @@ default_params = dict(
         )
 
 # override output parameters
+output_params = dict(
+        imaqGetWindowBackground=["backgroundColor"],
+        )
 not_output_params = dict(
-        imaqConvolve2=set(["kernel"]),
+        imaqConvolve2=["kernel"],
+        imaqExtractTextureFeatures=["waveletBands"],
+        imaqExtractWaveletBands=["waveletBands"],
         )
 
 # block comment exclusion list
@@ -67,6 +72,7 @@ function_re = re.compile(r'^(IMAQ_FUNC\s+)?(?P<restype>(const\s+)?[A-Za-z0-9_*]+
 # defines deferred until after structures
 define_after_struct = []
 defined = set()
+forward_structs = set()
 opaque_structs = set()
 enums = set()
 
@@ -227,7 +233,7 @@ class CtypesEmitter:
             funcargs.append(self.c_to_ctype(restype, ""))
 
         customout = False # generate a custom wrapper function for out params
-        outparams = []
+        outparams = [x for x in output_params.get(name, [])]
         paramtypes = {}
         if params:
             defaults = default_params.get(name, {})
@@ -247,7 +253,7 @@ class CtypesEmitter:
                 if (pname not in not_outputs
                         and name not in underscored
                         and not ptype.startswith("const")
-                        and ptype[:-1] not in opaque_structs
+                        and ptype[:-1] not in forward_structs
                         and ptype[-1] == "*"):
                     if functype != "STDFUNC" or ptype[:-1] in enums:
                         customout = True
@@ -268,7 +274,11 @@ class CtypesEmitter:
                 ptype = paramtypes[pname][0][:-1]
                 arr = paramtypes[pname][1]
                 ctype = self.c_to_ctype(ptype, arr)
-                print("    %s = %s(0)" % (pname, ctype), file=self.out)
+                if ptype in enums:
+                    init = "0"
+                else:
+                    init = ""
+                print("    %s = %s(%s)" % (pname, ctype, init), file=self.out)
                 if ptype in enums:
                     retparams.append(pname)
                 else:
@@ -326,7 +336,6 @@ def split_comment(line):
     return code, comment
 
 def prescan_file(f):
-    forward_structs = set()
     structs = set()
 
     for line in f:
