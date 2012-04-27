@@ -11,7 +11,10 @@ exclude = set([
         # structures
         "Image",
         # functions
+        "imaqClearError",
+        "imaqGetErrorText",
         "imaqGetLastError",
+        "imaqGetLastErrorFunc",
         "imaqSetError",
         "imaqDispose",
         ])
@@ -23,6 +26,7 @@ block_comment_exclude = set([
         "Macros",
         "This accomplishes said task.",
         "If using Visual C++, force startup & shutdown code to run.",
+        "Error Management functions",
         ])
 
 # #define name value
@@ -166,7 +170,9 @@ class CtypesEmitter:
             return
         paramstr = ""
         if params:
-            paramstr = ", " + ", ".join(self.c_to_ctype(ctype, arr) for name, ctype, arr in params)
+            paramstr = ", ".join(self.c_to_ctype(ctype, arr) for name, ctype, arr in params if name != 'void')
+            if paramstr:
+                paramstr = ", " + paramstr
         print("%s = CFUNCTYPE(%s%s)" %
                 (name, self.c_to_ctype(restype, ""), paramstr), file=self.out)
         defined.add(name)
@@ -179,6 +185,8 @@ class CtypesEmitter:
             paramstr = ", ".join('("%s", %s)' %
                     (name, self.c_to_ctype(ctype, arr))
                     for name, ctype, arr in params if name != 'void')
+            if paramstr:
+                paramstr = ", " + paramstr
         # common return cases
         if restype == "int":
             functype = "STDFUNC"
@@ -188,8 +196,8 @@ class CtypesEmitter:
                 functype = "STDPTRFUNC"
             else:
                 functype = "RETFUNC"
-            restypestr = "%s, " % self.c_to_ctype(restype, "")
-        print('%s = %s("%s", %s%s)' %
+            restypestr = ", %s" % self.c_to_ctype(restype, "")
+        print('%s = %s("%s"%s%s)' %
                 (name, functype, name, restypestr, paramstr), file=self.out)
         defined.add(name)
 
