@@ -78,8 +78,7 @@ if Priv_ReadJPEGString is None:
 
 if Priv_ReadJPEGString is None:
     def Priv_ReadJPEGString(image, data):
-        imaqSetError(1, "Priv_ReadJPEGString")
-        raise ImaqError
+        raise NotImplementedError
 
 # alias for code ported from C
 Priv_ReadJPEGString_C = Priv_ReadJPEGString
