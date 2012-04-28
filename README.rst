@@ -21,6 +21,17 @@ Features
 ==========
 
 *  Full wrapping of all structures, enumerations, and functions.
+*  All functions raise a ``nivision.ImaqError`` exception if an error occurs,
+   rather than relying on nonzero or NULL return values.
+*  Output parameters are returned as a tuple (in parameter order).  If the
+   function additionally returns a value, this is returned as the first
+   element of the tuple, followed by the output parameters.
+*  Count/size/length parameters that specify the length of an array are
+   handled implicitly by using Python's ``len()`` function.  This includes
+   return values (which are returned as a sized array).  PARTIALLY IMPLEMENTED.
+*  Additional Pythonic helper functions (see Documentation_).
+*  Automatic memory management of Image and several other data types (see
+   Documentation_).
 
 Usage
 =======
@@ -57,16 +68,8 @@ Documentation
 
 The "NI Vision for LabWindows/CVI Function Reference" help file
 (NIVisionCVI.chm) is currently the best "complete" reference.  However, the
-Python wrappers deviate from the C library in several important ways:
-
-*  All functions raise a ``nivision.ImaqError`` exception if an error occurs,
-   rather than relying on nonzero or NULL return values.
-*  Output parameters are returned as a tuple (in parameter order).  If the
-   function additionally returns a value, this is returned as the first
-   element of the tuple, followed by the output parameters.
-*  Count/size/length parameters that specify the length of an array are
-   handled implicitly by using Python's ``len()`` function.  This includes
-   return values (which are returned as a sized array).  PARTIALLY IMPLEMENTED.
+Python wrappers deviate from the C library in several important ways (see
+Features_).
 
 A few helper functions are provided due to the use of in/out parameters.
 
@@ -79,7 +82,7 @@ A few helper functions are provided due to the use of in/out parameters.
 ``imaqDispose()`` is automatically called when the corresponding Python object
 is garbage collected for the following types ONLY: ``Image``, ``CharSet``,
 ``ClassifierSession``, ``Image``, ``MultipleGeometicPattern``, ``Overlay``,
-``ROI``.  It is still ok to explicitly call ``imaqDispose()``.
+``ROI``.  It is still ok to explicitly call ``imaqDispose()`` on these objects.
 
 Implementation
 ================
