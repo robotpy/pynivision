@@ -86,10 +86,7 @@ class CtypesEmitter:
         print("#"*78, file=self.out)
 
     def opaque_struct(self, name):
-        print("class %s(ctypes.c_void_p):" % name, file=self.out)
-        print("    def __del__(self):", file=self.out)
-        print("        if self.value != 0:", file=self.out)
-        print("            imaqDispose(self)", file=self.out)
+        print("class %s(Disposed): pass" % name, file=self.out)
 
     def define(self, name, value, comment):
         if name in exclude:

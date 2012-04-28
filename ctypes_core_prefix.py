@@ -124,3 +124,11 @@ class Enumeration(ctypes.c_uint):
             raise ValueError("Cannot mix enumeration members")
         return ctypes.c_uint(obj.value)
 
+#
+# Memory Managed Types
+#
+class Disposed(ctypes.c_void_p):
+    def __del__(self):
+        if self.value != 0:
+            imaqDispose(self)
+
