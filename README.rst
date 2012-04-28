@@ -60,8 +60,7 @@ The wrappers have only been tested on Python 3.x.
 Installation
 ==============
 
-*  Run ``gen_wrap.py`` to generate the wrappers.
-*  Copy ``nivision`` folder to Python ``site-packages``.
+Run ``install.bat`` or ``python setup.py install``.
 
 Documentation
 ===============
