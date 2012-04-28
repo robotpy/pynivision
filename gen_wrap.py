@@ -483,45 +483,51 @@ def parse_file(emit, f):
 
         print("Unrecognized: %s" % code)
 
-if __name__ == "__main__":
+def generate(srcdir, outpath, nivisionhpath=None):
     # determine the file to open
-    fname = None
+    # look in the current directory
+    if not nivisionhpath:
+        if os.path.exists(os.path.join(srcdir, "nivision.h")):
+            nivisionhpath = os.path.join(srcdir, "nivision.h")
 
-    # if specified on the command line, prefer that
-    if len(sys.argv) > 2:
-        fname = sys.argv[1]
-
-    # otherwise look in the current directory
-    if os.path.exists("nivision.h"):
-        fname = "nivision.h"
-
-    # otherwise try to get it from the IMAQ Vision directory
-    if not fname:
+    # try to get it from the IMAQ Vision directory
+    if not nivisionhpath:
         try:
             import winreg
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\National Instruments\IMAQ Vision\CurrentVersion', access=winreg.KEY_QUERY_VALUE)
             imaqpath = winreg.QueryValueEx(key, 'Path')[0]
-            fname = os.path.join(imaqpath, "Include", "nivision.h")
+            nivisionhpath = os.path.join(imaqpath, "Include", "nivision.h")
         except (ImportError, WindowsError, IndexError):
             pass
 
-    if not fname:
+    # could not find it
+    if not nivisionhpath:
         print("Could not find nivision.h")
         sys.exit(1)
 
-    inf = open(fname)
+    # open input file
+    inf = open(nivisionhpath)
 
     # prescan for undefined structurs
     prescan_file(inf)
     inf.seek(0)
 
-    out = open("nivision/core.py", "wt")
-    for line in open("ctypes_core_prefix.py"):
+    # generate
+    out = open(outpath, "wt")
+    for line in open(os.path.join(srcdir, "ctypes_core_prefix.py")):
         print(line, end='', file=out)
     emit = CtypesEmitter(out)
     emit.block_comment("Opaque Structures")
     for name in sorted(opaque_structs):
         emit.opaque_struct(name)
     parse_file(emit, inf)
-    for line in open("ctypes_core_suffix.py"):
+    for line in open(os.path.join(srcdir, "ctypes_core_suffix.py")):
         print(line, end='', file=out)
+
+if __name__ == "__main__":
+    fname = None
+    # if specified on the command line, prefer that
+    if len(sys.argv) > 2:
+        fname = sys.argv[1]
+
+    generate("", os.path.join("nivision", "core.py"), fname)
