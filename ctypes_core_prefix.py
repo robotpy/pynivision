@@ -132,3 +132,37 @@ class Disposed(ctypes.c_void_p):
         if self.value != 0:
             imaqDispose(self)
 
+class ImaqArray(ctypes.c_void_p):
+    def __init__(self, arr, length):
+        super().__init__(ctypes.addressof(arr.contents))
+        self.arr = arr
+        self.length = length
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, key):
+        if key < 0 or key > self.length-1:
+            raise IndexError
+        return self.arr[key]
+
+    def __setitem__(self, key, value):
+        if key < 0 or key > self.length-1:
+            raise IndexError
+        self.arr[key] = value
+
+    def __delitem__(self, key):
+        if key < 0 or key > self.length-1:
+            raise IndexError
+        del self.arr[key] # will raise TypeError, but pass it down anyway
+
+    def __repr__(self):
+        return "ImaqArray(%s, %d)" % (self.arr, self.length)
+
+class DisposedArray(ImaqArray):
+    def __repr__(self):
+        return "DisposedArray(%s, %d)" % (self.arr, self.length)
+
+    def __del__(self):
+        if self.value != 0:
+            imaqDispose(self)

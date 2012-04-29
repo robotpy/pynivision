@@ -37,7 +37,7 @@ def imaqUseMaxAvailableCores():
     v = ctypes.c_uint()
     _imaqMulticoreOptions(IMAQ_USE_MAX_AVAILABLE, ctypes.byref(v))
 
-# custom to handle data copy
+# custom to handle data size variance and data copy
 def imaqImageToArray(image, rect=IMAQ_NO_RECT):
     cols = ctypes.c_int()
     rows = ctypes.c_int()
@@ -46,3 +46,52 @@ def imaqImageToArray(image, rect=IMAQ_NO_RECT):
     data = ctypes.string_at(d, cols.value*rows.value*imaqGetBytesPerPixel(image))
     imaqDispose(d)
     return data, cols.value, rows.value
+
+# custom to handle data copy
+def imaqReadCustomData(image, key):
+    size = ctypes.c_uint()
+    d = _imaqReadCustomData(image, key, ctypes.byref(size))
+    data = ctypes.string_at(d, size.value)
+    imaqDispose(d)
+    return data
+
+# custom to handle data copy
+def imaqFlatten(image, type, compression, quality):
+    size = ctypes.c_uint()
+    d = _imaqFlatten(image, type, compression, quality, ctypes.byref(size))
+    data = ctypes.string_at(d, size.value)
+    imaqDispose(d)
+    return data
+
+# type of returned pointer varies
+_type_to_ctype = {
+        IMAQ_IMAGE_U8: ctypes.c_byte,
+        IMAQ_IMAGE_U16: ctypes.c_ushort,
+        IMAQ_IMAGE_I16: ctypes.c_short,
+        IMAQ_IMAGE_SGL: ctypes.c_float,
+        IMAQ_IMAGE_COMPLEX: Complex,
+        IMAQ_IMAGE_RGB: RGBValue,
+        IMAQ_IMAGE_HSL: HSLValue,
+        IMAQ_IMAGE_RGB_U64: RGBU64Value,
+        }
+def imaqGetLine(image, start, end):
+    numPoints = ctypes.c_int()
+    d = _imaqFlatten(image, start, end, ctypes.byref(numPoints))
+    t = _type_to_ctype[imaqGetImageType(image)]
+    return DisposedArray(ctypes.cast(d, t), numPoints)
+
+# custom to handle rows*columns math
+# XXX: should this try to build a 2D array (e.g. with numpy) instead?
+def imaqComplexPlaneToArray(image, plane, rect):
+    rows = ctypes.c_int()
+    columns = ctypes.c_int()
+    rv = _imaqComplexPlaneToArray(image, plane, rect, ctypes.byref(rows), ctypes.byref(columns))
+    return DisposedArray(rv, rows.value*columns.value), rows.value, columns.value
+
+# custom to copyin expectedPatterns to String255
+def imaqVerifyPatterns(image, set, expectedPatterns, roi):
+    numScores = ctypes.c_int()
+    pat = ctypes.create_string_buffer(expectedPatterns, 256)
+    rv = _imaqVerifyPatterns(image, set, pat, len(expectedPatterns), roi, ctypes.byref(numScores))
+    return DisposedArray(rv, numScores.value)
+

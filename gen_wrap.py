@@ -30,11 +30,56 @@ exclude = set([
 underscored = set([
         "imaqMulticoreOptions",
         "imaqImageToArray",
+        "imaqReadCustomData",
+        "imaqFlatten",
+        "imaqGetLine",
+        "imaqComplexPlaneToArray",
+        "imaqVerifyPatterns",
         ])
 
 # default parameters
 default_params = dict(
         imaqCreateImage=dict(borderSize=0),
+        )
+
+# array size parameters (string=name of other arg, None=size of return value)
+array_size_params = dict(
+        imaqCaliperTool=dict(numEdgePairs=None),
+        imaqCircles=dict(numCircles=None),
+        imaqDetectCircles=dict(numMatchesReturned=None),
+        imaqDetectEllipses=dict(numMatchesReturned=None),
+        imaqDetectExtremes=dict(numExtremes=None),
+        imaqDetectLines=dict(numMatchesReturned=None),
+        imaqDetectRectangles=dict(numMatchesReturned=None),
+        imaqEdgeTool2=dict(numEdges=None),
+        imaqEdgeTool=dict(numEdges=None),
+        imaqEnumerateCustomKeys=dict(size=None),
+        imaqExtractCurves=dict(numCurves=None),
+        imaqFindCircles=dict(numCircles=None),
+        imaqGetFilterNames=dict(numFilters=None),
+        imaqGetGeometricFeaturesFromCurves=dict(numFeatures=None),
+        imaqGetGeometricTemplateFeatureInfo=dict(numFeatures=None),
+        imaqGetParticleInfo=dict(reportCount=None),
+        imaqGetPointsOnContour=dict(numSegments=None),
+        imaqGetPointsOnLine=dict(numPoints=None),
+        imaqInterpolatePoints=dict(interpCount=None),
+        imaqLoadImagePopup=dict(numPaths=None),
+        imaqMatchColor=dict(numScores=None),
+        imaqMatchColorPattern=dict(numMatches=None),
+        imaqMatchGeometricPattern2=dict(numMatches=None),
+        imaqMatchGeometricPattern3=dict(numMatches=None),
+        imaqMatchGeometricPattern=dict(numMatches=None),
+        imaqMatchMultipleGeometricPatterns=dict(numMatches=None),
+        imaqMatchPattern2=dict(numMatches=None),
+        imaqMatchPattern3=dict(numMatches=None),
+        imaqMatchPattern=dict(numMatches=None),
+        imaqMatchShape=dict(numMatches=None),
+        imaqReadDataMatrixBarcode=dict(numBarcodes=None),
+        imaqReadPDF417Barcode=dict(numBarcodes=None),
+        imaqRefineMatches=dict(numCandidatesOut=None),
+        imaqSelectParticles=dict(selectedCount=None),
+        imaqSimpleEdge=dict(numEdges=None),
+        imaqVerifyText=dict(numScores=None),
         )
 
 # override output parameters
@@ -103,7 +148,9 @@ class CtypesEmitter:
         elif value.startswith("imaqMake"):
             clean = value[8:]
             after_struct = True
-        elif value[0] == '"' or number_re.match(value):
+        elif value[0] == '"':
+            clean = 'b'+value
+        elif number_re.match(value):
             clean = value
         elif constant_re.match(value):
             clean = value
@@ -229,7 +276,11 @@ class CtypesEmitter:
                 functype = "RETFUNC"
             funcargs.append(self.c_to_ctype(restype, ""))
 
-        customout = False # generate a custom wrapper function for out params
+        custom = False # generate a custom wrapper function?
+        size_params = array_size_params.get(name, {})
+        size_params_rev = dict((y, x) for x, y in size_params.items())
+        if size_params:
+            custom = True
         outparams = [x for x in output_params.get(name, [])]
         paramtypes = {}
         if params:
@@ -253,17 +304,17 @@ class CtypesEmitter:
                         and ptype[:-1] not in forward_structs
                         and ptype[-1] == "*"):
                     if functype != "STDFUNC" or ptype[:-1] in enums:
-                        customout = True
+                        custom = True
                     outparams.append(pname)
 
-        if not customout and outparams:
+        if not custom and outparams:
             funcargs.append("out=[" + ", ".join('"%s"' % x for x in outparams) + "]")
 
         print('%s%s = %s(%s)' %
-                ("_" if (name in underscored or customout) else "", name,
+                ("_" if (name in underscored or custom) else "", name,
                     functype, ", ".join(funcargs)), file=self.out)
 
-        if customout:
+        if custom:
             inparams = [x[0] for x in params if x[0] not in outparams]
             print("def %s(%s):" % (name, ", ".join(inparams)), file=self.out)
             retparams = []
@@ -293,7 +344,18 @@ class CtypesEmitter:
                 print("    return %s" % ", ".join(retparams), file=self.out)
             else:
                 print("    rv = _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
-                print("    return rv, %s" % ", ".join(retparams), file=self.out)
+                if None in size_params_rev:
+                    retval = "DisposedArray(rv, %s.value)" % size_params_rev[None]
+                    try:
+                        retparams.remove("%s.value" % size_params_rev[None])
+                    except ValueError:
+                        print("%s: could not find %s size return value"
+                                % size_params_rev[None])
+                        retval = "rv"
+                else:
+                    retval = "rv"
+                print("    return %s" % ", ".join([retval]+retparams),
+                        file=self.out)
 
         defined.add(name)
 
