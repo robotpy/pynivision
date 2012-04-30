@@ -129,7 +129,4 @@ def init():
 init()
 
 import atexit
-@atexit.register
-def shutdown():
-    gdiplus.GdiplusShutdown(_token)
-
+atexit.register(gdiplus.GdiplusShutdown, _token)
