@@ -23,6 +23,12 @@ setup(name='pynivision',
       license='BSD',
       url='https://github.com/robotpy/pynivision',
       packages=['nivision'],
-      cmdclass={'build_py': build_py},
+      cmdclass={'build_py': build_py, 'test': test},
+      options = {
+          'test': dict(
+              test_type='unittest',
+              test_suite='tests.alltests.suite',
+              )
+          }
       )
 
