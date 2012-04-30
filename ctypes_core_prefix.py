@@ -101,10 +101,13 @@ def imaqSetError(errorCode, function):
 # Memory Management functions
 #
 _imaqDispose = STDFUNC("imaqDispose", ("object", ctypes.c_void_p))
-def imaqDispose(object):
-    _imaqDispose(object)
-    if hasattr(object, "value"):
-        object.value = 0
+def imaqDispose(obj):
+    if getattr(obj, "_contents", None) is not None:
+        _imaqDispose(ctypes.byref(obj._contents))
+        obj._contents = None
+    if getattr(obj, "value", None) is not None:
+        _imaqDispose(obj)
+        obj.value = None
 
 #
 # Enumerated Types
@@ -128,41 +131,50 @@ class Enumeration(ctypes.c_uint):
 # Memory Managed Types
 #
 class Disposed(ctypes.c_void_p):
-    def __del__(self):
-        if self.value != 0:
-            imaqDispose(self)
+    __del__ = imaqDispose
 
-class ImaqArray(ctypes.c_void_p):
-    def __init__(self, arr, length):
-        super().__init__(ctypes.addressof(arr.contents))
-        self.arr = arr
-        self.length = length
+class ImaqArray:
+    def __init__(self, ptr, length):
+        self._contents = ptr
+        self._length_ = length
 
     def __len__(self):
-        return self.length
+        return self._length_
 
     def __getitem__(self, key):
-        if key < 0 or key > self.length-1:
+        if key < 0 or key > self._length_-1:
             raise IndexError
-        return self.arr[key]
+        return self._contents[key]
 
     def __setitem__(self, key, value):
-        if key < 0 or key > self.length-1:
+        if key < 0 or key > self._length_-1:
             raise IndexError
-        self.arr[key] = value
+        self._contents[key] = value
 
     def __delitem__(self, key):
-        if key < 0 or key > self.length-1:
+        if key < 0 or key > self._length_-1:
             raise IndexError
-        del self.arr[key] # will raise TypeError, but pass it down anyway
+        del self._contents[key] # will raise TypeError, but pass it down anyway
 
     def __repr__(self):
-        return "ImaqArray(%s, %d)" % (self.arr, self.length)
+        return "ImaqArray(%s, %d)" % (self._contents, self._length_)
 
 class DisposedArray(ImaqArray):
     def __repr__(self):
-        return "DisposedArray(%s, %d)" % (self.arr, self.length)
+        return "DisposedArray(%s, %d)" % (self._contents, self._length_)
 
-    def __del__(self):
-        if self.value != 0:
-            imaqDispose(self)
+    __del__ = imaqDispose
+
+class DisposedPointer:
+    def __init__(self, ptr):
+        self._contents = ptr.contents
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, "_contents"), name)
+    def __setattr__(self, name, value):
+        if name == "_contents":
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._contents, name, value)
+    def __repr__(self):
+        return "DisposedPointer(%s)" % self._contents
+    __del__ = imaqDispose
