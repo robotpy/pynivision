@@ -5,6 +5,8 @@ import os
 from distutils.command.build_py import build_py as _build_py
 from distutils.core import setup
 
+from disttest import test
+
 srcdir = os.path.dirname(__file__)
 
 class build_py(_build_py):
