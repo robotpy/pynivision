@@ -92,6 +92,10 @@ not_output_params = dict(
         imaqExtractWaveletBands=["waveletBands"],
         )
 
+# pointer return value should NOT be disposed
+not_disposed_rv = dict(
+        )
+
 # block comment exclusion list
 block_comment_exclude = set([
         "Includes",
@@ -265,21 +269,26 @@ class CtypesEmitter:
             return
 
         # common return cases
+        retpointer = False
         funcargs = ['"%s"' % name]
         if restype == "int":
             functype = "STDFUNC"
-            restypestr = ""
         else:
             if restype[-1] == "*":
                 functype = "STDPTRFUNC"
             else:
                 functype = "RETFUNC"
-            funcargs.append(self.c_to_ctype(restype, ""))
+            ctype = self.c_to_ctype(restype, "")
+            if "POINTER" in ctype:
+                retpointer = True
+            funcargs.append(ctype)
 
         custom = False # generate a custom wrapper function?
         size_params = array_size_params.get(name, {})
         size_params_rev = dict((y, x) for x, y in size_params.items())
         if size_params:
+            custom = True
+        if retpointer:
             custom = True
         outparams = [x for x in output_params.get(name, [])]
         paramtypes = {}
@@ -344,6 +353,9 @@ class CtypesEmitter:
                 print("    return %s" % ", ".join(retparams), file=self.out)
             else:
                 print("    rv = _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
+
+                # Map return value
+                retval = None
                 if None in size_params_rev:
                     retval = "DisposedArray(rv, %s.value)" % size_params_rev[None]
                     try:
@@ -351,9 +363,16 @@ class CtypesEmitter:
                     except ValueError:
                         print("%s: could not find %s size return value"
                                 % size_params_rev[None])
+                        pass
+
+                if retval is None:
+                    if retpointer:
+                        if name in not_disposed_rv:
+                            retval = "rv.contents"
+                        else:
+                            retval = "DisposedPointer(rv)"
+                    else:
                         retval = "rv"
-                else:
-                    retval = "rv"
                 print("    return %s" % ", ".join([retval]+retparams),
                         file=self.out)
 
