@@ -74,6 +74,7 @@ array_size_params = dict(
         imaqMatchPattern3=dict(numMatches=None),
         imaqMatchPattern=dict(numMatches=None),
         imaqMatchShape=dict(numMatches=None),
+        imaqMeasureParticles=dict(numMeasurements="measurements"),
         imaqReadDataMatrixBarcode=dict(numBarcodes=None),
         imaqReadPDF417Barcode=dict(numBarcodes=None),
         imaqRefineMatches=dict(numCandidatesOut=None),
@@ -323,11 +324,33 @@ class CtypesEmitter:
                 ("_" if (name in underscored or custom) else "", name,
                     functype, ", ".join(funcargs)), file=self.out)
 
-        if custom:
-            inparams = [x[0] for x in params if x[0] not in outparams]
+        if custom and not name in underscored:
+            # generate list of input parameters
+            inparams = []
+            for pname, ptype, arr in params:
+                if pname in outparams:
+                    continue
+                if pname in size_params:
+                    continue
+                inparams.append(pname)
+
+            # function definition
             print("def %s(%s):" % (name, ", ".join(inparams)), file=self.out)
             retparams = []
+
+            # array input parameters
+            for lenpname, pname in size_params.items():
+                if pname is None:
+                    continue # output parameter
+                # get ctype of parameter
+                ptype = paramtypes[pname][0][:-1]
+                arr = paramtypes[pname][1]
+                ctype = self.c_to_ctype(ptype, arr)
+                print("    %s, %s = iterableToArray(%s, %s)" % (pname, lenpname, pname, ctype), file=self.out)
+
+            # placeholders for output parameters
             for pname in outparams:
+                # get ctype of parameter
                 ptype = paramtypes[pname][0][:-1]
                 arr = paramtypes[pname][1]
                 ctype = self.c_to_ctype(ptype, arr)
@@ -341,6 +364,7 @@ class CtypesEmitter:
                 else:
                     retparams.append("%s.value" % pname)
 
+            # arguments to ctypes function
             callargs = []
             for pname, ptype, arr in params:
                 if pname in outparams:
@@ -348,6 +372,7 @@ class CtypesEmitter:
                 else:
                     callargs.append(pname)
 
+            # call ctypes function
             if functype == "STDFUNC":
                 print("    _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
                 print("    return %s" % ", ".join(retparams), file=self.out)

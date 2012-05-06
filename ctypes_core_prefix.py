@@ -178,3 +178,15 @@ class DisposedPointer:
     def __repr__(self):
         return "DisposedPointer(%s)" % self._contents
     __del__ = imaqDispose
+
+def iterableToArray(param, type):
+    """Convert an iterable to a ctypes array of type.
+    Returns tuple of array, length."""
+    length = getattr(param, "_length_", None)
+    if length is None:
+        length = len(param)
+        arr = (type*length)(*param)
+    else:
+        arr = param
+    return arr, length
+
