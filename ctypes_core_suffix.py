@@ -55,15 +55,16 @@ def imaqReadCustomData(image, key):
     imaqDispose(d)
     return data
 
-# custom to handle data copy
+# custom to handle c_byte <-> void translation
 def imaqFlatten(image, type, compression, quality):
     size = ctypes.c_uint()
-    d = _imaqFlatten(image, type, compression, quality, ctypes.byref(size))
-    data = ctypes.string_at(d, size.value)
-    imaqDispose(d)
-    return data
+    rv = _imaqFlatten(image, type, compression, quality, ctypes.byref(size))
+    return DisposedArray(ctypes.cast(rv, ctypes.POINTER(ctypes.c_byte), size.value))
+def imaqUnflatten(image, data):
+    data, size = iterableToArray(data, ctypes.c_byte)
+    _imaqUnflatten(image, data, size)
 
-# type of returned pointer varies
+# type of pointer varies
 _type_to_ctype = {
         IMAQ_IMAGE_U8: ctypes.c_byte,
         IMAQ_IMAGE_U16: ctypes.c_ushort,
@@ -74,11 +75,22 @@ _type_to_ctype = {
         IMAQ_IMAGE_HSL: HSLValue,
         IMAQ_IMAGE_RGB_U64: RGBU64Value,
         }
+
 def imaqGetLine(image, start, end):
     numPoints = ctypes.c_int()
-    d = _imaqFlatten(image, start, end, ctypes.byref(numPoints))
+    d = _imaqGetLine(image, start, end, ctypes.byref(numPoints))
     t = _type_to_ctype[imaqGetImageType(image)]
     return DisposedArray(ctypes.cast(d, t), numPoints)
+
+def imaqSetLine(image, array, start, end):
+    array, arraySize = iterableToArray(array,
+            _type_to_ctype[imaqGetImageType(image)])
+    _imaqSetLine(image, array, arraySize, start, end)
+
+def imaqGetPixelAddress(image, pixel):
+    d = _imaqGetPixelAddress(image, pixel)
+    t = _type_to_ctype[imaqGetImageType(image)]
+    return ctypes.cast(d, t)
 
 # custom to handle rows*columns math
 # XXX: should this try to build a 2D array (e.g. with numpy) instead?
@@ -94,4 +106,41 @@ def imaqVerifyPatterns(image, set, expectedPatterns, roi):
     pat = ctypes.create_string_buffer(expectedPatterns, 256)
     rv = _imaqVerifyPatterns(image, set, pat, len(expectedPatterns), roi, ctypes.byref(numScores))
     return DisposedArray(rv, numScores.value)
+
+# custom for output parameter array
+def imaqReadFile(image, fileName):
+    colorTable = (RGBValue*256)()
+    numColors = ctypes.c_int()
+    _imaqReadFile(image, fileName, colorTable, ctypes.byref(numColors))
+    if numColors == 0:
+        return []
+    return ImaqArray(colorTable, numColors)
+
+# custom for output parameter array
+def imaqReadVisionFile(image, fileName):
+    colorTable = (RGBValue*256)()
+    numColors = ctypes.c_int()
+    _imaqReadVisionFile(image, fileName, colorTable, ctypes.byref(numColors))
+    if numColors == 0:
+        return []
+    return ImaqArray(colorTable, numColors)
+
+# number of patterns is for both labels and patterns
+def imaqLearnMultipleGeometricPatterns(patterns, labels):
+    patterns, numberOfPatterns = iterableToArray(patterns, Image)
+    labels = ctypes.create_string_buffer(256*numberOfPatterns)
+    ctypes.memset(labels, 0, 256*numberOfPatterns)
+    if len(labels) != numberOfPatterns:
+        raise ValueError("len(labels) does not match len(patterns)")
+    for i, label in enumerate(labels):
+        for j, ch in enumerate(label):
+            labels[i*256+j] = ch
+    rv = _imaqLearnMultipleGeometricPatterns(patterns, numberOfPatterns, labels)
+    return DisposedPointer(rv)
+
+# copyin String255
+def imaqReadMultipleGeometricPatternFile(fileName, description):
+    description = ctypes.create_string_buffer(description, 256)
+    rv = _imaqReadMultipleGeometricPatternFile(fileName, description)
+    return DisposedPointer(rv)
 

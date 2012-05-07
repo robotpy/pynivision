@@ -32,23 +32,33 @@ underscored = set([
         "imaqImageToArray",
         "imaqReadCustomData",
         "imaqFlatten",
+        "imaqLearnMultipleGeometricPatterns",
+        "imaqReadMultipleGeometricPatternFile",
         "imaqGetLine",
+        "imaqSetLine",
+        "imaqGetPixelAddress",
         "imaqComplexPlaneToArray",
+        "imaqReadFile",
         "imaqVerifyPatterns",
+        "imaqOverlayBitmap",
+        "imaqUnflatten",
         ])
 
 # default parameters
 default_params = dict(
         imaqCreateImage=dict(borderSize=0),
+        imaqWriteJPEGFile=dict(colorTable=None),
         )
 
 # array size parameters (string=name of other arg, None=size of return value)
 array_size_params = dict(
-        imaqCaliperTool=dict(numEdgePairs=None),
+        imaqAddClosedContour=dict(numPoints="points"),
+        imaqAddOpenContour=dict(numPoints="points"),
+        imaqCaliperTool=dict(numEdgePairs=None, numPoints="points"),
         imaqCircles=dict(numCircles=None),
         imaqDetectCircles=dict(numMatchesReturned=None),
         imaqDetectEllipses=dict(numMatchesReturned=None),
-        imaqDetectExtremes=dict(numExtremes=None),
+        imaqDetectExtremes=dict(numExtremes=None, numPixels="pixels"),
         imaqDetectLines=dict(numMatchesReturned=None),
         imaqDetectRectangles=dict(numMatchesReturned=None),
         imaqEdgeTool2=dict(numEdges=None),
@@ -56,13 +66,15 @@ array_size_params = dict(
         imaqEnumerateCustomKeys=dict(size=None),
         imaqExtractCurves=dict(numCurves=None),
         imaqFindCircles=dict(numCircles=None),
+        imaqFitCircle2=dict(numPoints="points"),
+        imaqFitEllipse2=dict(numPoints="points"),
         imaqGetFilterNames=dict(numFilters=None),
-        imaqGetGeometricFeaturesFromCurves=dict(numFeatures=None),
+        imaqGetGeometricFeaturesFromCurves=dict(numFeatures=None, numCurves="curves", numFeatureTypes="featureTypes"),
         imaqGetGeometricTemplateFeatureInfo=dict(numFeatures=None),
         imaqGetParticleInfo=dict(reportCount=None),
         imaqGetPointsOnContour=dict(numSegments=None),
         imaqGetPointsOnLine=dict(numPoints=None),
-        imaqInterpolatePoints=dict(interpCount=None),
+        imaqInterpolatePoints=dict(interpCount=None, numPoints="points"),
         imaqLoadImagePopup=dict(numPaths=None),
         imaqMatchColor=dict(numScores=None),
         imaqMatchColorPattern=dict(numMatches=None),
@@ -75,26 +87,53 @@ array_size_params = dict(
         imaqMatchPattern=dict(numMatches=None),
         imaqMatchShape=dict(numMatches=None),
         imaqMeasureParticles=dict(numMeasurements="measurements"),
+        imaqMergeOverlay=dict(numColors="palette"),
+        imaqMultithreshold=dict(numRanges="ranges"),
+        imaqOverlayClosedContour=dict(numPoints="points"),
+        imaqOverlayOpenContour=dict(numPoints="points"),
+        imaqOverlayPoints=dict(numPoints="points", numColors="colors"),
+        imaqParticleFilter4=dict(criteriaCount="criteria"),
         imaqReadDataMatrixBarcode=dict(numBarcodes=None),
         imaqReadPDF417Barcode=dict(numBarcodes=None),
-        imaqRefineMatches=dict(numCandidatesOut=None),
+        imaqRefineMatches=dict(numCandidatesOut=None, numCandidatesIn="candidatesIn"),
         imaqSelectParticles=dict(selectedCount=None),
-        imaqSimpleEdge=dict(numEdges=None),
+        imaqSetupRing=dict(numImages="images"),
+        imaqSetupSequence=dict(numImages="images"),
+        imaqSimpleEdge=dict(numEdges=None, numPoints="points"),
+        imaqTransformPixelToRealWorld=dict(numCoordinates="pixelCoordinates"),
+        imaqTransformRealWorldToPixel=dict(numCoordinates="realWorldCoordinates"),
         imaqVerifyText=dict(numScores=None),
         )
 
 # override output parameters
 output_params = dict(
+        imaqFindTransformRect2=["baseSystem", "newSystem", "axisReport"],
+        imaqFindTransformRects2=["baseSystem", "newSystem", "axisReport"],
         imaqGetWindowBackground=["backgroundColor"],
+        imaqGetWindowCenterPos=["centerPosition"],
+        imaqReadCustomData=["size"],
+        imaqGetAVIInfo=["info"],
+        imaqBuildCoordinateSystem=["system"],
+        imaqGetBisectingLine=["bisectStart", "bisectEnd"],
+        imaqGetIntersection=["intersection"],
+        imaqGetMidLine=["midLineStart", "midLineEnd"],
+        imaqGetPerpendicularLine=["perpLineStart", "perpLineEnd"],
+        imaqGetToolWindowPos=["position"],
+        imaqReadMeter=["endOfNeedle"],
+        imaqGradeDataMatrixBarcodeAIM=["report"],
+        imaqGetROIBoundingBox=["boundingBox"],
         )
 not_output_params = dict(
         imaqConvolve2=["kernel"],
         imaqExtractTextureFeatures=["waveletBands"],
         imaqExtractWaveletBands=["waveletBands"],
+        imaqWriteJPEGFile=["colorTable"],
         )
 
-# pointer return value should NOT be disposed
-not_disposed_rv = dict(
+# override disposal of pointer return value
+disposed_rv = set(
+        )
+not_disposed_rv = set(
         )
 
 # block comment exclusion list
@@ -271,6 +310,8 @@ class CtypesEmitter:
 
         # common return cases
         retpointer = False
+        if name in disposed_rv:
+            retpointer = True
         funcargs = ['"%s"' % name]
         if restype == "int":
             functype = "STDFUNC"
@@ -291,7 +332,8 @@ class CtypesEmitter:
             custom = True
         if retpointer:
             custom = True
-        outparams = [x for x in output_params.get(name, [])]
+        out_params = output_params.get(name, [])
+        outparams = []
         paramtypes = {}
         if params:
             defaults = default_params.get(name, {})
@@ -308,7 +350,7 @@ class CtypesEmitter:
                 funcargs.append(paramstr)
 
                 # try to guess output parameters
-                if (pname not in not_outputs
+                if pname in out_params or (pname not in not_outputs
                         and name not in underscored
                         and not ptype.startswith("const")
                         and ptype[:-1] not in forward_structs
@@ -350,6 +392,8 @@ class CtypesEmitter:
 
             # placeholders for output parameters
             for pname in outparams:
+                if pname in size_params_rev:
+                    continue # array input parameter
                 # get ctype of parameter
                 ptype = paramtypes[pname][0][:-1]
                 arr = paramtypes[pname][1]
@@ -367,7 +411,7 @@ class CtypesEmitter:
             # arguments to ctypes function
             callargs = []
             for pname, ptype, arr in params:
-                if pname in outparams:
+                if pname in outparams and pname not in size_params_rev:
                     callargs.append("ctypes.byref(%s)" % pname)
                 else:
                     callargs.append(pname)
@@ -375,7 +419,8 @@ class CtypesEmitter:
             # call ctypes function
             if functype == "STDFUNC":
                 print("    _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
-                print("    return %s" % ", ".join(retparams), file=self.out)
+                if retparams:
+                    print("    return %s" % ", ".join(retparams), file=self.out)
             else:
                 print("    rv = _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
 
