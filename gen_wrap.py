@@ -1,150 +1,7 @@
 import sys
 import os
 import re
-
-# exclusion list; no code is generated for these
-exclude = set([
-        # defines
-        "IMAQ_IMPORT",
-        "IMAQ_FUNC",
-        "IMAQ_STDCALL",
-        "IMAQ_CALLBACK",
-        # error functions
-        "imaqClearError",
-        "imaqGetErrorText",
-        "imaqGetLastError",
-        "imaqGetLastErrorFunc",
-        "imaqSetError",
-        # management functions
-        "imaqDispose",
-        # Make* functions are faster in native Python
-        "imaqMakeAnnulus",
-        "imaqMakePoint",
-        "imaqMakePointFloat",
-        "imaqMakeRect",
-        "imaqMakeRotatedRect",
-        "imaqMakeRotatedRectFromRect",
-        ])
-
-# underscored list; these are private and wrapped by additional Python code
-underscored = set([
-        "imaqMulticoreOptions",
-        "imaqImageToArray",
-        "imaqReadCustomData",
-        "imaqFlatten",
-        "imaqLearnMultipleGeometricPatterns",
-        "imaqReadMultipleGeometricPatternFile",
-        "imaqGetLine",
-        "imaqSetLine",
-        "imaqGetPixelAddress",
-        "imaqComplexPlaneToArray",
-        "imaqReadFile",
-        "imaqVerifyPatterns",
-        "imaqOverlayBitmap",
-        "imaqUnflatten",
-        ])
-
-# default parameters
-default_params = dict(
-        imaqCreateImage=dict(borderSize=0),
-        imaqWriteJPEGFile=dict(colorTable=None),
-        )
-
-# array size parameters (string=name of other arg, None=size of return value)
-array_size_params = dict(
-        imaqAddClosedContour=dict(numPoints="points"),
-        imaqAddOpenContour=dict(numPoints="points"),
-        imaqCaliperTool=dict(numEdgePairs=None, numPoints="points"),
-        imaqCircles=dict(numCircles=None),
-        imaqDetectCircles=dict(numMatchesReturned=None),
-        imaqDetectEllipses=dict(numMatchesReturned=None),
-        imaqDetectExtremes=dict(numExtremes=None, numPixels="pixels"),
-        imaqDetectLines=dict(numMatchesReturned=None),
-        imaqDetectRectangles=dict(numMatchesReturned=None),
-        imaqEdgeTool2=dict(numEdges=None),
-        imaqEdgeTool=dict(numEdges=None),
-        imaqEnumerateCustomKeys=dict(size=None),
-        imaqExtractCurves=dict(numCurves=None),
-        imaqFindCircles=dict(numCircles=None),
-        imaqFitCircle2=dict(numPoints="points"),
-        imaqFitEllipse2=dict(numPoints="points"),
-        imaqGetFilterNames=dict(numFilters=None),
-        imaqGetGeometricFeaturesFromCurves=dict(numFeatures=None, numCurves="curves", numFeatureTypes="featureTypes"),
-        imaqGetGeometricTemplateFeatureInfo=dict(numFeatures=None),
-        imaqGetParticleInfo=dict(reportCount=None),
-        imaqGetPointsOnContour=dict(numSegments=None),
-        imaqGetPointsOnLine=dict(numPoints=None),
-        imaqInterpolatePoints=dict(interpCount=None, numPoints="points"),
-        imaqLoadImagePopup=dict(numPaths=None),
-        imaqMatchColor=dict(numScores=None),
-        imaqMatchColorPattern=dict(numMatches=None),
-        imaqMatchGeometricPattern2=dict(numMatches=None),
-        imaqMatchGeometricPattern3=dict(numMatches=None),
-        imaqMatchGeometricPattern=dict(numMatches=None),
-        imaqMatchMultipleGeometricPatterns=dict(numMatches=None),
-        imaqMatchPattern2=dict(numMatches=None),
-        imaqMatchPattern3=dict(numMatches=None),
-        imaqMatchPattern=dict(numMatches=None),
-        imaqMatchShape=dict(numMatches=None),
-        imaqMeasureParticles=dict(numMeasurements="measurements"),
-        imaqMergeOverlay=dict(numColors="palette"),
-        imaqMultithreshold=dict(numRanges="ranges"),
-        imaqOverlayClosedContour=dict(numPoints="points"),
-        imaqOverlayOpenContour=dict(numPoints="points"),
-        imaqOverlayPoints=dict(numPoints="points", numColors="colors"),
-        imaqParticleFilter4=dict(criteriaCount="criteria"),
-        imaqReadDataMatrixBarcode=dict(numBarcodes=None),
-        imaqReadPDF417Barcode=dict(numBarcodes=None),
-        imaqRefineMatches=dict(numCandidatesOut=None, numCandidatesIn="candidatesIn"),
-        imaqSelectParticles=dict(selectedCount=None),
-        imaqSetupRing=dict(numImages="images"),
-        imaqSetupSequence=dict(numImages="images"),
-        imaqSimpleEdge=dict(numEdges=None, numPoints="points"),
-        imaqTransformPixelToRealWorld=dict(numCoordinates="pixelCoordinates"),
-        imaqTransformRealWorldToPixel=dict(numCoordinates="realWorldCoordinates"),
-        imaqVerifyText=dict(numScores=None),
-        )
-
-# override output parameters
-output_params = dict(
-        imaqFindTransformRect2=["baseSystem", "newSystem", "axisReport"],
-        imaqFindTransformRects2=["baseSystem", "newSystem", "axisReport"],
-        imaqGetWindowBackground=["backgroundColor"],
-        imaqGetWindowCenterPos=["centerPosition"],
-        imaqReadCustomData=["size"],
-        imaqGetAVIInfo=["info"],
-        imaqBuildCoordinateSystem=["system"],
-        imaqGetBisectingLine=["bisectStart", "bisectEnd"],
-        imaqGetIntersection=["intersection"],
-        imaqGetMidLine=["midLineStart", "midLineEnd"],
-        imaqGetPerpendicularLine=["perpLineStart", "perpLineEnd"],
-        imaqGetToolWindowPos=["position"],
-        imaqReadMeter=["endOfNeedle"],
-        imaqGradeDataMatrixBarcodeAIM=["report"],
-        imaqGetROIBoundingBox=["boundingBox"],
-        )
-not_output_params = dict(
-        imaqConvolve2=["kernel"],
-        imaqExtractTextureFeatures=["waveletBands"],
-        imaqExtractWaveletBands=["waveletBands"],
-        imaqWriteJPEGFile=["colorTable"],
-        )
-
-# override disposal of pointer return value
-disposed_rv = set(
-        )
-not_disposed_rv = set(
-        )
-
-# block comment exclusion list
-block_comment_exclude = set([
-        "Includes",
-        "Control Defines",
-        "Macros",
-        "This accomplishes said task.",
-        "If using Visual C++, force startup & shutdown code to run.",
-        "Error Management functions",
-        ])
+import configparser
 
 # parser regular expressions
 number_re = re.compile(r'-?[0-9]+')
@@ -166,8 +23,9 @@ opaque_structs = set()
 enums = set()
 
 class CtypesEmitter:
-    def __init__(self, out):
+    def __init__(self, out, config):
         self.out = out
+        self.config = config
 
     def block_comment(self, comment):
         print("#"*78, file=self.out)
@@ -178,7 +36,9 @@ class CtypesEmitter:
         print("class %s(Disposed): pass" % name, file=self.out)
 
     def define(self, name, value, comment):
-        if name in exclude:
+        if self.config.getboolean(name, "exclude", fallback=False):
+            return
+        if name in opaque_structs:
             return
         clean = None
         after_struct = False
@@ -222,7 +82,9 @@ class CtypesEmitter:
         defined.add(name)
 
     def enum(self, name, values):
-        if name in exclude:
+        if self.config.getboolean(name, "exclude", fallback=False):
+            return
+        if name in opaque_structs:
             return
         print("class %s(Enumeration): pass" % name, file=self.out)
         for vname, value, comment in values:
@@ -281,7 +143,9 @@ class CtypesEmitter:
         return name + arr
 
     def typedef(self, name, typedef, arr):
-        if name in exclude:
+        if self.config.getboolean(name, "exclude", fallback=False):
+            return
+        if name in opaque_structs:
             return
         if typedef.startswith("struct"):
             print("class %s(ctypes.Structure): pass" % name, file=self.out)
@@ -293,7 +157,9 @@ class CtypesEmitter:
         defined.add(name)
 
     def typedef_function(self, name, restype, params):
-        if name in exclude:
+        if self.config.getboolean(name, "exclude", fallback=False):
+            return
+        if name in opaque_structs:
             return
         paramstr = ""
         if params:
@@ -305,13 +171,20 @@ class CtypesEmitter:
         defined.add(name)
 
     def function(self, name, restype, params):
-        if name in exclude:
+        if self.config.getboolean(name, "exclude", fallback=False):
+            return
+        if name in opaque_structs:
             return
 
+        try:
+            config = self.config[name]
+        except KeyError:
+            config = self.config['DEFAULT']
+
+        underscored = config.getboolean("underscored", fallback=False)
+
         # common return cases
-        retpointer = False
-        if name in disposed_rv:
-            retpointer = True
+        retpointer = config.getboolean("rvdisposed", fallback=False)
         funcargs = ['"%s"' % name]
         if restype == "int":
             functype = "STDFUNC"
@@ -326,32 +199,39 @@ class CtypesEmitter:
             funcargs.append(ctype)
 
         custom = False # generate a custom wrapper function?
-        size_params = array_size_params.get(name, {})
-        size_params_rev = dict((y, x) for x, y in size_params.items())
+        sized_params = dict(tuple(y.strip() for y in x.split(':')) for x in
+                config.get("arraysize", "").split(',') if x)
+        size_params = set(sized_params.values())
+        retarraysize = config.get("retarraysize", "").strip()
+        if retarraysize:
+            size_params.add(retarraysize)
         if size_params:
             custom = True
         if retpointer:
             custom = True
-        out_params = output_params.get(name, [])
+        config_outparams = \
+                set(x.strip() for x in config.get("outparams", "").split(','))
         outparams = []
         paramtypes = {}
         if params:
-            defaults = default_params.get(name, {})
-            not_outputs = not_output_params.get(name, set())
+            defaults = dict((y.strip() for y in x.split(':')) for x in
+                    config.get("defaults", "").split(',') if x)
+            inparams = set(x.strip() for x in
+                    config.get("inparams", "").split(','))
             for pname, ptype, arr in params:
                 if pname == "void":
                     continue
                 ctype = self.c_to_ctype(ptype, arr)
                 paramtypes[pname] = (ptype, arr)
                 if pname in defaults:
-                    paramstr = '("%s", %s, %s)' % (pname, ctype, repr(defaults[pname]))
+                    paramstr = '("%s", %s, %s)' % (pname, ctype, defaults[pname])
                 else:
                     paramstr = '("%s", %s)' % (pname, ctype)
                 funcargs.append(paramstr)
 
                 # try to guess output parameters
-                if pname in out_params or (pname not in not_outputs
-                        and name not in underscored
+                if pname in config_outparams or (pname not in inparams
+                        and not underscored
                         and not ptype.startswith("const")
                         and ptype[:-1] not in forward_structs
                         and ptype[-1] == "*"):
@@ -363,10 +243,10 @@ class CtypesEmitter:
             funcargs.append("out=[" + ", ".join('"%s"' % x for x in outparams) + "]")
 
         print('%s%s = %s(%s)' %
-                ("_" if (name in underscored or custom) else "", name,
+                ("_" if (underscored or custom) else "", name,
                     functype, ", ".join(funcargs)), file=self.out)
 
-        if custom and not name in underscored:
+        if custom and not underscored:
             # generate list of input parameters
             inparams = []
             for pname, ptype, arr in params:
@@ -381,18 +261,16 @@ class CtypesEmitter:
             retparams = []
 
             # array input parameters
-            for lenpname, pname in size_params.items():
-                if pname is None:
-                    continue # output parameter
+            for pname, sizepname in sized_params.items():
                 # get ctype of parameter
                 ptype = paramtypes[pname][0][:-1]
                 arr = paramtypes[pname][1]
                 ctype = self.c_to_ctype(ptype, arr)
-                print("    %s, %s = iterableToArray(%s, %s)" % (pname, lenpname, pname, ctype), file=self.out)
+                print("    %s, %s = iterableToArray(%s, %s)" % (pname, sizepname, pname, ctype), file=self.out)
 
             # placeholders for output parameters
             for pname in outparams:
-                if pname in size_params_rev:
+                if pname in sized_params:
                     continue # array input parameter
                 # get ctype of parameter
                 ptype = paramtypes[pname][0][:-1]
@@ -411,7 +289,7 @@ class CtypesEmitter:
             # arguments to ctypes function
             callargs = []
             for pname, ptype, arr in params:
-                if pname in outparams and pname not in size_params_rev:
+                if pname in outparams and pname not in sized_params:
                     callargs.append("ctypes.byref(%s)" % pname)
                 else:
                     callargs.append(pname)
@@ -426,18 +304,18 @@ class CtypesEmitter:
 
                 # Map return value
                 retval = None
-                if None in size_params_rev:
-                    retval = "DisposedArray(rv, %s.value)" % size_params_rev[None]
+                if retarraysize:
+                    retval = "DisposedArray(rv, %s.value)" % retarraysize
                     try:
-                        retparams.remove("%s.value" % size_params_rev[None])
+                        retparams.remove("%s.value" % retarraysize)
                     except ValueError:
                         print("%s: could not find %s size return value"
-                                % size_params_rev[None])
+                                % retarraysize)
                         pass
 
                 if retval is None:
                     if retpointer:
-                        if name in not_disposed_rv:
+                        if config.get("rvdisposed", None) == False:
                             retval = "rv.contents"
                         else:
                             retval = "DisposedPointer(rv)"
@@ -449,7 +327,9 @@ class CtypesEmitter:
         defined.add(name)
 
     def structunion(self, ctype, name, fields):
-        if name in exclude:
+        if self.config.getboolean(name, "exclude", fallback=False):
+            return
+        if name in opaque_structs:
             return
         if name not in defined:
             print("class %s(ctypes.%s): pass" % (name, ctype), file=self.out)
@@ -507,9 +387,8 @@ def prescan_file(f):
             continue
 
     opaque_structs.update(forward_structs - structs)
-    exclude.update(opaque_structs)
 
-def parse_file(emit, f):
+def parse_file(emit, f, block_comment_exclude):
     in_block_comment = False
     cur_block = ""
     in_enum = None
@@ -634,12 +513,16 @@ def parse_file(emit, f):
 
         print("Unrecognized: %s" % code)
 
-def generate(srcdir, outpath, nivisionhpath=None):
+def generate(srcdir, outpath, configpath=None, nivisionhpath=None):
     # determine the file to open
     # look in the current directory
     if not nivisionhpath:
         if os.path.exists(os.path.join(srcdir, "nivision.h")):
             nivisionhpath = os.path.join(srcdir, "nivision.h")
+
+    if not configpath:
+        if os.path.exists(os.path.join(srcdir, "nivision.ini")):
+            configpath = os.path.join(srcdir, "nivision.ini")
 
     # try to get it from the IMAQ Vision directory
     if not nivisionhpath:
@@ -651,10 +534,29 @@ def generate(srcdir, outpath, nivisionhpath=None):
         except (ImportError, WindowsError, IndexError):
             pass
 
+    if not configpath:
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\National Instruments\IMAQ Vision\CurrentVersion', access=winreg.KEY_QUERY_VALUE)
+            imaqversion = winreg.QueryValueEx(key, 'VersionString')[0]
+            configpath = os.path.join(srcdir, "nivision_%s.ini" % imaqversion)
+        except (ImportError, WindowsError, IndexError):
+            pass
+
     # could not find it
     if not nivisionhpath:
         print("Could not find nivision.h")
         sys.exit(1)
+
+    if not configpath:
+        print("Could not find configuration .ini file")
+        sys.exit(1)
+
+    # read config file
+    config = configparser.ConfigParser()
+    config.read_file(open(configpath))
+    block_comment_exclude = set(x.strip() for x in
+            config["Block Comment"]["exclude"].splitlines())
 
     # open input file
     inf = open(nivisionhpath)
@@ -667,18 +569,21 @@ def generate(srcdir, outpath, nivisionhpath=None):
     out = open(outpath, "wt")
     for line in open(os.path.join(srcdir, "ctypes_core_prefix.py")):
         print(line, end='', file=out)
-    emit = CtypesEmitter(out)
+    emit = CtypesEmitter(out, config)
     emit.block_comment("Opaque Structures")
     for name in sorted(opaque_structs):
         emit.opaque_struct(name)
-    parse_file(emit, inf)
+    parse_file(emit, inf, block_comment_exclude)
     for line in open(os.path.join(srcdir, "ctypes_core_suffix.py")):
         print(line, end='', file=out)
 
 if __name__ == "__main__":
+    configname = None
     fname = None
     # if specified on the command line, prefer that
     if len(sys.argv) > 2:
-        fname = sys.argv[1]
+        configname = sys.argv[1]
+    if len(sys.argv) > 3:
+        fname = sys.argv[2]
 
-    generate("", os.path.join("nivision", "core.py"), fname)
+    generate("", os.path.join("nivision", "core.py"), configname, fname)
