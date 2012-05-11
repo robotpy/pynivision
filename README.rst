@@ -28,9 +28,9 @@ Features
    element of the tuple, followed by the output parameters.
 *  Count/size/length parameters that specify the length of an array are
    handled implicitly by using Python's ``len()`` function.  This includes
-   return values (which are returned as a sized array).  PARTIALLY IMPLEMENTED.
+   return values (which are returned as a sized array).
 *  Additional Pythonic helper functions (see Documentation_).
-*  Automatic memory management of Image and several other data types (see
+*  Automatic memory management of Image and other data types (see
    Documentation_).
 
 Usage
@@ -79,9 +79,10 @@ A few helper functions are provided due to the use of in/out parameters.
    number of available processor cores.
 
 ``imaqDispose()`` is automatically called when the corresponding Python object
-is garbage collected for the following types ONLY: ``Image``, ``CharSet``,
-``ClassifierSession``, ``Image``, ``MultipleGeometicPattern``, ``Overlay``,
-``ROI``.  It is still ok to explicitly call ``imaqDispose()`` on these objects.
+is garbage collected for ``Image`` and all other structures/arrays returned
+by imaq functions.  It is still ok to explicitly call ``imaqDispose()`` on
+these objects (but be careful, as the underlying object will be immediately
+freed even though the Python object is still accessible).
 
 Implementation
 ================
@@ -91,6 +92,11 @@ Hand-written Python code in ``ctypes_core_prefix.py`` and
 ``ctypes_core_suffix.py`` complements the automatically generated code.  The
 ``gen_wrap.py`` script creates ``nivision/core.py`` which includes the contents
 of the prefix and suffix Python files.
+
+The ``gen_wrap.py`` script reads an ``.ini`` file for Pythonic customizations
+to the wrappers such as automatic disposal and handling of sized values as
+arrays.  The .ini file used is automatically determined by the nivision
+version in use (or can alternatively be specified on the command line).
 
 As ``Priv_ReadJPEGString_C`` is not exported on current Windows distributions of
 ``nivissvc.dll``, a custom implementation that uses GDI+ has been written in
