@@ -581,9 +581,9 @@ if __name__ == "__main__":
     configname = None
     fname = None
     # if specified on the command line, prefer that
-    if len(sys.argv) > 2:
+    if len(sys.argv) >= 2:
         configname = sys.argv[1]
-    if len(sys.argv) > 3:
+    if len(sys.argv) >= 3:
         fname = sys.argv[2]
 
     generate("", os.path.join("nivision", "core.py"), configname, fname)
