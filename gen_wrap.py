@@ -524,6 +524,12 @@ def generate(srcdir, outpath, configpath=None, nivisionhpath=None):
         if os.path.exists(os.path.join(srcdir, "nivision.ini")):
             configpath = os.path.join(srcdir, "nivision.ini")
 
+    try:
+        WindowsError
+    except NameError:
+        class WindowsError(Exception):
+            pass
+
     # try to get it from the IMAQ Vision directory
     if not nivisionhpath:
         try:
