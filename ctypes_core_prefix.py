@@ -6,7 +6,7 @@ if sys.platform.startswith('win'):
     _dll = ctypes.windll.nivision
     _functype = ctypes.WINFUNCTYPE
 else:
-    _dll = ctypes.cdll.nivision
+    _dll = ctypes.CDLL("libnivision.so")
     _functype = ctypes.CFUNCTYPE
 
 #

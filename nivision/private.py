@@ -9,6 +9,12 @@ from .core import Image, STDFUNC, imaqArrayToImage, imaqGetImageType, \
 
 __all__ = ["Priv_ReadJPEGString", "Priv_ReadJPEGString_C"]
 
+try:
+    WindowsError
+except NameError:
+    class WindowsError(Exception):
+        pass
+
 # ReadJPEGString: try to use the LabView one first... but currently this isn't
 # exported on Windows.
 Priv_ReadJPEGString = None
@@ -18,7 +24,7 @@ for lib in ["nivision", "nivissvc"]:
         if sys.platform.startswith('win'):
             dll = ctypes.WinDLL(lib)
         else:
-            dll = ctypes.CDLL(lib)
+            dll = ctypes.CDLL("lib%s.so" % lib)
         _Priv_ReadJPEGString_C = STDFUNC("Priv_ReadJPEGString_C",
                 ("image", Image), ("data", ctypes.c_char_p),
                 ("len", ctypes.c_uint), library=dll, handle_missing=False)
