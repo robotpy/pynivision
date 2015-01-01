@@ -4,9 +4,17 @@ import sys
 # DLL and function type
 if sys.platform.startswith('win'):
     _dll = ctypes.windll.nivision
+    _dll2 = ctypes.windll.niimaqdx
     _functype = ctypes.WINFUNCTYPE
 else:
+    # XXX: load libstdc++.so.6.0.20 to work around crash loading libHALAthena.
+    # This is due to multiple C++ libraries installed on the RoboRIO.
+    try:
+        _cpp_dll = ctypes.CDLL("/lib/libstdc++.so.6.0.20", mode=ctypes.RTLD_GLOBAL, use_errno=True)
+    except OSError:
+        pass
     _dll = ctypes.CDLL("libnivision.so")
+    _dll2 = ctypes.CDLL("libniimaqdx.so")
     _functype = ctypes.CFUNCTYPE
 
 #
@@ -18,9 +26,15 @@ class ImaqError(Exception):
         self.func = imaqGetLastErrorFunc()
     def __str__(self):
         if self.func:
-            return "%s: %s" % (self.func, imaqGetErrorText(self.code))
+            return "%s: %s: %s" % (self.func, self.code, imaqGetErrorText(self.code))
         else:
-            return "%s" % imaqGetErrorText(self.code)
+            return "%s: %s" % (self.code, imaqGetErrorText(self.code))
+
+class ImaqDxError(ImaqError):
+    def __init__(self, code):
+        self.code = code
+    def __str__(self):
+        return "%s: %s" % (self.code, IMAQdxGetErrorString(self.code))
 
 def RETFUNC(name, restype, *params, out=None, library=_dll,
         errcheck=None, handle_missing=True):
@@ -66,6 +80,15 @@ def STDPTRFUNC(name, restype, *params, **kwargs):
     kwargs.setdefault("errcheck", errcheck)
     return RETFUNC(name, restype, *params, **kwargs)
 
+def DXFUNC(name, *params, **kwargs):
+    def errcheck(result, func, args):
+        if result != 0:
+            raise ImaqDxError(result)
+        return args
+
+    kwargs.setdefault("errcheck", errcheck)
+    return RETFUNC(name, ctypes.c_uint, *params, **kwargs)
+
 #
 # Error Management functions
 #
@@ -96,6 +119,14 @@ def imaqSetError(errorCode, function):
     else:
         b = function
     return _imaqSetError(errorCode, b)
+
+_IMAQdxGetErrorString = DXFUNC("IMAQdxGetErrorString", ("error", ctypes.c_uint),
+        ("message", ctypes.c_char_p), ("messageLength", ctypes.c_uint32),
+        errcheck=None, library=_dll2)
+def IMAQdxGetErrorString(error):
+    message = ctypes.create_string_buffer(256)
+    _IMAQdxGetErrorString(error, message, 256)
+    return ctypes.cast(message, ctypes.c_char_p).value.decode("utf-8")
 
 #
 # Memory Management functions

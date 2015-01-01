@@ -1,31 +1,28 @@
+#!/usr/bin/env python3
 import sys
 import os
 import re
 import configparser
+import codecs
 
-# parser regular expressions
-number_re = re.compile(r'-?[0-9]+')
-constant_re = re.compile(r'[A-Z0-9_]+')
-define_re = re.compile(r'^#define\s+(?P<name>(IMAQ|ERR)_[A-Z0-9_]+)\s+(?P<value>.*)')
-enum_re = re.compile(r'^typedef\s+enum\s+(?P<name>[A-Za-z0-9]+)_enum\s*{')
-enum_value_re = re.compile(r'^\s*(?P<name>[A-Z0-9_]+)\s*=\s*(?P<value>-?[0-9A-Fx]+)\s*,?')
-struct_re = re.compile(r'^typedef\s+struct\s+(?P<name>[A-Za-z0-9]+)_struct\s*{')
-union_re = re.compile(r'^typedef\s+union\s+(?P<name>[A-Za-z0-9]+)_union\s*{')
-func_pointer_re = re.compile(r'(?P<restype>[A-Za-z0-9_*]+)\s*\(\s*[A-Za-z0-9_]*[*]\s*(?P<name>[A-Za-z0-9_]+)\s*\)\s*\((?P<params>[^)]*)\)')
-static_const_re = re.compile(r'^static\s+const\s+(?P<type>[A-Za-z0-9_]+)\s+(?P<name>[A-Za-z0-9_]+)\s*=\s*(?P<value>[^;]+);')
-function_re = re.compile(r'^(IMAQ_FUNC\s+)?(?P<restype>(const\s+)?[A-Za-z0-9_*]+)\s+(IMAQ_STDCALL\s+)?(?P<name>[A-Za-z0-9_]+)\s*\((?P<params>[^)]*)\);')
-
-# defines deferred until after structures
-define_after_struct = []
-defined = set()
-forward_structs = set()
-opaque_structs = set()
-enums = set()
+from nivision_parse import *
 
 class CtypesEmitter:
-    def __init__(self, out, config):
-        self.out = out
+    def __init__(self, srcdir, outdir, config):
+        self.srcdir = srcdir
+        self.outdir = outdir
         self.config = config
+
+        self.out = open(os.path.join(self.outdir, "core.py"), "wt")
+        for line in open(os.path.join(self.srcdir, "ctypes_core_prefix.py")):
+            print(line, end='', file=self.out)
+        self.block_comment("Opaque Structures")
+        for name in sorted(opaque_structs):
+            self.opaque_struct(name)
+
+    def finish(self):
+        for line in open(os.path.join(self.srcdir, "ctypes_core_suffix.py")):
+            print(line, end='', file=self.out)
 
     def block_comment(self, comment):
         print("#"*78, file=self.out)
@@ -87,11 +84,16 @@ class CtypesEmitter:
         if name in opaque_structs:
             return
         print("class %s(Enumeration): pass" % name, file=self.out)
+        prev_value = -1
         for vname, value, comment in values:
-            if vname.endswith("SIZE_GUARD"):
+            if vname.endswith("SIZE_GUARD") or vname.endswith("Guard"):
                 continue
+            if value is None:
+                # auto-increment
+                value = "%d" % (prev_value + 1)
             print("%s = %s(%s)" % (vname, name, value), file=self.out)
             defined.add(vname)
+            prev_value = int(value, 0)
         print("", file=self.out)
         defined.add(name)
         enums.add(name)
@@ -102,7 +104,9 @@ class CtypesEmitter:
             "wchar_t": "c_wchar",
             "unsigned char": "c_ubyte",
             "short": "c_short",
+            "short int": "c_short",
             "unsigned short": "c_ushort",
+            "unsigned short int": "c_ushort",
             "int": "c_int",
             "unsigned": "c_uint",
             "unsigned int": "c_uint",
@@ -110,6 +114,7 @@ class CtypesEmitter:
             "unsigned long": "c_ulong",
             "__int64": "c_longlong",
             "long long": "c_longlong",
+            "long long int": "c_longlong",
             "unsigned __int64": "c_ulonglong",
             "__uint64": "c_ulonglong",
             "unsigned long long": "c_ulonglong",
@@ -123,15 +128,26 @@ class CtypesEmitter:
             "void *": "c_void_p",
             "void*": "c_void_p",
             "size_t": "c_size_t",
+            "uInt8": "c_uint8",
+            "uInt16": "c_uint16",
+            "uInt32": "c_uint32",
+            "uInt64": "c_uint64",
+            "Int8": "c_int8",
+            "Int16": "c_int16",
+            "Int32": "c_int32",
+            "Int64": "c_int64",
+            "float32": "c_float",
+            "float64": "c_double",
             }
     def c_to_ctype(self, name, arr):
+        #print(name, arr)
         if arr:
             arr = '*'+arr
         if name.startswith("const"):
             name = name[5:].strip()
         ctype = self.ctypes_map.get(name, None)
         if ctype is not None:
-            return "ctypes." + ctype + arr
+            return "ctypes." + ctype + (arr or "")
         if name == "void":
             return "None"
         # Opaque structures are treated specially
@@ -139,8 +155,10 @@ class CtypesEmitter:
             name = name[:-1]
         # handle pointers recursively
         if name[-1] == '*':
-            name = "ctypes.POINTER(%s)" % self.c_to_ctype(name[:-1], "")
-        return name + arr
+            name = "ctypes.POINTER(%s)" % self.c_to_ctype(name[:-1], None)
+        if arr == "":
+            return "ctypes.POINTER(%s)" % self.c_to_ctype(name, None)
+        return name + (arr or "")
 
     def typedef(self, name, typedef, arr):
         if self.config.getboolean(name, "exclude", fallback=False):
@@ -151,6 +169,8 @@ class CtypesEmitter:
             print("class %s(ctypes.Structure): pass" % name, file=self.out)
         elif typedef.startswith("union"):
             print("class %s(ctypes.Union): pass" % name, file=self.out)
+        elif name in self.ctypes_map:
+            return
         else:
             print("%s = %s" % (name, self.c_to_ctype(typedef, arr)),
                     file=self.out)
@@ -167,7 +187,7 @@ class CtypesEmitter:
             if paramstr:
                 paramstr = ", " + paramstr
         print("%s = ctypes.CFUNCTYPE(%s%s)" %
-                (name, self.c_to_ctype(restype, ""), paramstr), file=self.out)
+                (name, self.c_to_ctype(restype, None), paramstr), file=self.out)
         defined.add(name)
 
     def function(self, name, restype, params):
@@ -188,12 +208,14 @@ class CtypesEmitter:
         funcargs = ['"%s"' % name]
         if restype == "int":
             functype = "STDFUNC"
+        elif restype == "IMAQdxError":
+            functype = "DXFUNC"
         else:
             if restype[-1] == "*":
                 functype = "STDPTRFUNC"
             else:
                 functype = "RETFUNC"
-            ctype = self.c_to_ctype(restype, "")
+            ctype = self.c_to_ctype(restype, None)
             if "POINTER" in ctype:
                 retpointer = True
             funcargs.append(ctype)
@@ -222,6 +244,8 @@ class CtypesEmitter:
                 if pname == "void":
                     continue
                 ctype = self.c_to_ctype(ptype, arr)
+                #if name == "IMAQdxEnumerateCameras":
+                #    print(pname,ptype,arr,ctype)
                 paramtypes[pname] = (ptype, arr)
                 if pname in defaults:
                     paramstr = '("%s", %s, %s)' % (pname, ctype, defaults[pname])
@@ -235,12 +259,19 @@ class CtypesEmitter:
                         and not ptype.startswith("const")
                         and ptype[:-1] not in forward_structs
                         and ptype[-1] == "*"):
-                    if functype != "STDFUNC" or ptype[:-1] in enums:
+                    if functype not in ("STDFUNC", "DXFUNC") or ptype[:-1] in enums:
                         custom = True
                     outparams.append(pname)
 
         if not custom and outparams:
             funcargs.append("out=[" + ", ".join('"%s"' % x for x in outparams) + "]")
+
+        try:
+            library = self.config["_platform_"]["library"]
+        except KeyError:
+            library = "_dll"
+        if library != "_dll":
+            funcargs.append("library=%s" % library)
 
         print('%s%s = %s(%s)' %
                 ("_" if (underscored or custom) else "", name,
@@ -295,7 +326,7 @@ class CtypesEmitter:
                     callargs.append(pname)
 
             # call ctypes function
-            if functype == "STDFUNC":
+            if functype in ("STDFUNC", "DXFUNC"):
                 print("    _%s(%s)" % (name, ", ".join(callargs)), file=self.out)
                 if retparams:
                     print("    return %s" % ", ".join(retparams), file=self.out)
@@ -346,250 +377,41 @@ class CtypesEmitter:
     def union(self, name, fields):
         self.structunion("Union", name, fields)
 
-def parse_cdecl(decl):
-    decl = " ".join(decl.split())
-    ctype, sep, name = decl.rpartition(' ')
-    # look for array[]
-    name, bracket, arr = name.partition('[')
-    if arr:
-        arr = arr[:-1]
-    return name, ctype, arr
+def generate(srcdir, outdir, inputs):
+    emit = None
 
-def split_comment(line):
-    if line.startswith('/*'):
-        return "", ""
-    parts = line.split('//', 1)
-    code = parts[0].strip()
-    comment = parts[1].strip() if len(parts) > 1 else None
-    return code, comment
+    for fname, configpath in inputs:
+        # read config file
+        config = configparser.ConfigParser()
+        config.read(configpath)
+        block_comment_exclude = set(x.strip() for x in
+                config["Block Comment"]["exclude"].splitlines())
 
-def prescan_file(f):
-    structs = set()
+        # open input file
+        with codecs.open(fname, "r", "iso-8859-1") as inf:
+            # prescan for undefined structurs
+            prescan_file(inf)
+            inf.seek(0)
 
-    for line in f:
-        code, comment = split_comment(line)
-        if not code and not comment:
-            continue
+            if emit is None:
+                emit = CtypesEmitter(srcdir, outdir, config)
+            else:
+                emit.config = config
 
-        # typedef struct {
-        m = struct_re.match(code)
-        if m is not None:
-            structs.add(m.group('name'))
-            continue
+            # generate
+            parse_file(emit, inf, block_comment_exclude)
 
-        # other typedef
-        if code.startswith("typedef"):
-            if '(' in code:
-                continue
-            name, typedef, arr = parse_cdecl(code[8:-1])
-            if typedef.startswith("struct"):
-                forward_structs.add(name)
-            continue
-
-    opaque_structs.update(forward_structs - structs)
-
-def parse_file(emit, f, block_comment_exclude):
-    in_block_comment = False
-    cur_block = ""
-    in_enum = None
-    in_struct = None
-    in_union = None
-
-    for line in f:
-        code, comment = split_comment(line)
-        if not code and not comment:
-            continue
-        #print(comment)
-
-        # in block comment
-        if in_block_comment:
-            if not code and comment is not None and comment[0] == '=':
-                # closing block comment; emit if not excluded
-                if cur_block not in block_comment_exclude:
-                    emit.block_comment(cur_block)
-                in_block_comment = False
-                # emit "after struct" constants in Globals
-                if cur_block == "Globals":
-                    for dname, dtext in define_after_struct:
-                        emit.text(dtext)
-                        defined.add(dname)
-                continue
-            if not code and comment is not None:
-                # remember current block
-                cur_block = comment
-            continue
-
-        # inside enum
-        if in_enum is not None:
-            if code[0] == '}':
-                # closing
-                emit.enum(*in_enum)
-                in_enum = None
-                continue
-            m = enum_value_re.match(code)
-            if m is not None:
-                in_enum[1].append((m.group('name'), m.group('value'), comment))
-            continue
-
-        # inside struct/union
-        if in_struct is not None or in_union is not None:
-            if code[0] == '}':
-                # closing
-                if in_struct is not None:
-                    emit.struct(*in_struct)
-                    in_struct = None
-                if in_union is not None:
-                    emit.struct(*in_union)
-                    in_union = None
-                continue
-            name, ctype, arr = parse_cdecl(code[:-1])
-            # add to fields
-            if in_struct is not None:
-                in_struct[1].append((name, ctype, arr, comment))
-            if in_union is not None:
-                in_union[1].append((name, ctype, arr, comment))
-            continue
-
-        # block comment
-        if not code and comment is not None and comment[0] == '=':
-            in_block_comment = True
-
-        # #define
-        m = define_re.match(code)
-        if m is not None:
-            emit.define(m.group('name'), m.group('value').strip(), comment)
-            continue
-
-        # typedef enum {
-        m = enum_re.match(code)
-        if m is not None:
-            in_enum = (m.group('name'), [])
-            continue
-
-        # typedef struct {
-        m = struct_re.match(code)
-        if m is not None:
-            in_struct = (m.group('name'), [])
-            continue
-
-        # typedef union {
-        m = union_re.match(code)
-        if m is not None:
-            in_union = (m.group('name'), [])
-            continue
-
-        # other typedef
-        if code.startswith("typedef"):
-            # typedef function?
-            m = func_pointer_re.match(code[8:-1])
-            if m is not None:
-                params = [parse_cdecl(param.strip()) for param in m.group('params').strip().split(',') if param.strip()]
-                emit.typedef_function(m.group('name'), m.group('restype'), params)
-                continue
-            if '(' in code:
-                print("Invalid typedef: %s" % code)
-                continue
-            emit.typedef(*parse_cdecl(code[8:-1]))
-            continue
-
-        # function
-        m = function_re.match(code)
-        if m is not None:
-            params = [parse_cdecl(param.strip()) for param in m.group('params').strip().split(',') if param.strip()]
-            emit.function(m.group('name'), m.group('restype'), params)
-            continue
-
-        # static const
-        m = static_const_re.match(code)
-        if m is not None:
-            value = m.group('value')
-            if value[0] == '{':
-                value = [v.strip() for v in value[1:-1].strip().split(',') if v.strip()]
-            emit.static_const(m.group('name'), m.group('type'), value)
-            continue
-
-        if not code or code[0] == '#':
-            continue
-
-        print("Unrecognized: %s" % code)
-
-def generate(srcdir, outpath, configpath=None, nivisionhpath=None):
-    # determine the file to open
-    # look in the current directory
-    if not nivisionhpath:
-        if os.path.exists(os.path.join(srcdir, "nivision.h")):
-            nivisionhpath = os.path.join(srcdir, "nivision.h")
-
-    if not configpath:
-        if os.path.exists(os.path.join(srcdir, "nivision.ini")):
-            configpath = os.path.join(srcdir, "nivision.ini")
-
-    try:
-        WindowsError
-    except NameError:
-        class WindowsError(Exception):
-            pass
-
-    # try to get it from the IMAQ Vision directory
-    if not nivisionhpath:
-        try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\National Instruments\IMAQ Vision\CurrentVersion', access=winreg.KEY_QUERY_VALUE)
-            imaqpath = winreg.QueryValueEx(key, 'Path')[0]
-            nivisionhpath = os.path.join(imaqpath, "Include", "nivision.h")
-        except (ImportError, WindowsError, IndexError):
-            pass
-
-    if not configpath:
-        try:
-            import winreg
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\National Instruments\IMAQ Vision\CurrentVersion', access=winreg.KEY_QUERY_VALUE)
-            imaqversion = winreg.QueryValueEx(key, 'VersionString')[0]
-            configpath = os.path.join(srcdir, "nivision_%s.ini" % imaqversion)
-        except (ImportError, WindowsError, IndexError):
-            pass
-
-    # could not find it
-    if not nivisionhpath:
-        print("Could not find nivision.h")
-        sys.exit(1)
-
-    if not configpath:
-        print("Could not find configuration .ini file")
-        sys.exit(1)
-
-    # read config file
-    config = configparser.ConfigParser()
-    config.read_file(open(configpath))
-    block_comment_exclude = set(x.strip() for x in
-            config["Block Comment"]["exclude"].splitlines())
-
-    # open input file
-    inf = open(nivisionhpath)
-
-    # prescan for undefined structurs
-    prescan_file(inf)
-    inf.seek(0)
-
-    # generate
-    out = open(outpath, "wt")
-    for line in open(os.path.join(srcdir, "ctypes_core_prefix.py")):
-        print(line, end='', file=out)
-    emit = CtypesEmitter(out, config)
-    emit.block_comment("Opaque Structures")
-    for name in sorted(opaque_structs):
-        emit.opaque_struct(name)
-    parse_file(emit, inf, block_comment_exclude)
-    for line in open(os.path.join(srcdir, "ctypes_core_suffix.py")):
-        print(line, end='', file=out)
+    emit.finish()
 
 if __name__ == "__main__":
-    configname = None
-    fname = None
-    # if specified on the command line, prefer that
-    if len(sys.argv) >= 2:
-        configname = sys.argv[1]
-    if len(sys.argv) >= 3:
-        fname = sys.argv[2]
+    if len(sys.argv) < 3 or ((len(sys.argv)-1) % 2) != 0:
+        print("Usage: gen_wrap.py <header.h config.ini>...")
+        exit(0)
 
-    generate("", os.path.join("nivision", "core.py"), configname, fname)
+    inputs = []
+    for i in range(1, len(sys.argv), 2):
+        fname = sys.argv[i]
+        configname = sys.argv[i+1]
+        inputs.append((fname, configname))
+
+    generate("", "nivision", inputs)
