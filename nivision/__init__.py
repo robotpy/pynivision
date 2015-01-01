@@ -2,11 +2,13 @@
 nivision package for Python.
 """
 
-__author__  = "Peter Johnson <johnson.peter@gmail.com>"
-__status__  = "development"
-__version__ = "1.0"
-__date__    = "25 Apr 2012"
+__author__  = "Peter Johnson <robotpy@googlegroups.com>"
 
 from . import camera
 from .core import *
 from .private import *
+
+try:
+    from .version import __version__
+except ImportError:
+    __version__ = 'master'
