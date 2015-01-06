@@ -9,7 +9,7 @@ base_package = 'nivision'
 version_file = join(setup_dir, base_package, 'version.py')
 
 # Automatically generate a version.py based on the git version
-if exists(join(setup_dir, '..', '.git')):
+if exists(join(setup_dir, '.git')):
     p = subprocess.Popen(["git", "describe", "--tags", "--dirty=-dirty"],
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
