@@ -60,6 +60,11 @@ The wrappers have only been tested on Python 3.x.
 Installation
 ==============
 
+On the robot, this will be installed automatically as of RobotPy 2015.0.1. Otherwise,
+you can install it via pip:
+
+    pip install pynivision
+
 Run ``install.bat`` or ``python setup.py install``.
 
 Documentation

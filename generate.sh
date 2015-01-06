@@ -5,7 +5,7 @@ if [ -e $1/nivision.h ]; then
 elif [ -e $1/wpilibc/wpilibC++Devices/include/nivision.h ]; then
     HDRPATH=$1/wpilibc/wpilibC++Devices/include
 else
-    echo "Usage: $0 <path to nivision.h>"
+    echo "Usage: $0 <path to allwpilib or nivision.h>"
     exit 1
 fi
 
