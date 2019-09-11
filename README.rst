@@ -1,3 +1,7 @@
+**Note**: This repository is no longer maintained by the RobotPy project. 
+The successor to this project can be found at https://github.com/chrisjbillington/pynivision
+
+
 ********************************************
   Python Wrappers for NI Vision (nivision)
 ********************************************
